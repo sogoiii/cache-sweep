@@ -6,7 +6,7 @@ use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::app::App;
+use super::app::{App, SortOrder};
 use super::cleanup::TerminalCleanupGuard;
 use super::input::{handle_key, Action};
 use super::ui;
@@ -21,7 +21,8 @@ enum Command {
 
 pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
     let (_guard, mut terminal) = TerminalCleanupGuard::new()?;
-    let mut app = App::new(args.exclude_sensitive);
+    let sort_order = SortOrder::from_str(&args.sort);
+    let mut app = App::new(args.exclude_sensitive, sort_order);
 
     // Set visible height based on terminal
     app.visible_height = terminal.size()?.height.saturating_sub(8) as usize;

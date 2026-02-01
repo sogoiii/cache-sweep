@@ -19,11 +19,22 @@ pub enum Mode {
     MultiSelect,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SortOrder {
+    #[default]
     Size,
     Path,
     Age,
+}
+
+impl SortOrder {
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "path" => SortOrder::Path,
+            "age" => SortOrder::Age,
+            _ => SortOrder::Size,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -58,7 +69,6 @@ pub struct App {
     pub mode: Mode,
     pub sort_order: SortOrder,
     pub search_query: String,
-    pub needs_sort: bool,
     pub needs_filter: bool,
     pub scanning: bool,
     pub total_size: u64,
@@ -73,7 +83,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(exclude_sensitive: bool) -> Self {
+    pub fn new(exclude_sensitive: bool, sort_order: SortOrder) -> Self {
         Self {
             results: Vec::new(),
             filtered_indices: Vec::new(),
@@ -81,9 +91,8 @@ impl App {
             scroll_offset: 0,
             panel: Panel::Results,
             mode: Mode::Normal,
-            sort_order: SortOrder::Size,
+            sort_order,
             search_query: String::new(),
-            needs_sort: false,
             needs_filter: false,
             scanning: true,
             total_size: 0,
@@ -109,9 +118,9 @@ impl App {
 
             self.results.push(item);
         }
-        // Apply filter immediately so results show up right away
+        // Sort immediately so results display in correct order
+        self.sort_results();
         self.apply_filter();
-        self.needs_sort = true;
     }
 
     pub fn update_size(&mut self, index: usize, size: u64) {
@@ -119,7 +128,9 @@ impl App {
             item.scan_result.size = Some(size);
             self.total_size = self.results.iter().filter_map(|r| r.scan_result.size).sum();
             self.sizes_calculated += 1;
-            self.needs_sort = true;
+            // Sort immediately so display stays current
+            self.sort_results();
+            self.apply_filter();
         }
     }
 
@@ -127,12 +138,7 @@ impl App {
         self.spinner_tick = self.spinner_tick.wrapping_add(1);
         self.sort_flash = self.sort_flash.saturating_sub(1);
 
-        if self.needs_sort {
-            self.sort_results();
-            self.needs_sort = false;
-            self.needs_filter = true;
-        }
-
+        // Handle deferred filter (e.g., after deletion)
         if self.needs_filter {
             self.apply_filter();
             self.needs_filter = false;
@@ -318,5 +324,38 @@ impl App {
     pub fn spinner_char(&self) -> char {
         const SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
         SPINNER[self.spinner_tick % SPINNER.len()]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sort_order_from_str_size() {
+        assert_eq!(SortOrder::from_str("size"), SortOrder::Size);
+        assert_eq!(SortOrder::from_str("SIZE"), SortOrder::Size);
+        assert_eq!(SortOrder::from_str("Size"), SortOrder::Size);
+    }
+
+    #[test]
+    fn test_sort_order_from_str_path() {
+        assert_eq!(SortOrder::from_str("path"), SortOrder::Path);
+        assert_eq!(SortOrder::from_str("PATH"), SortOrder::Path);
+        assert_eq!(SortOrder::from_str("Path"), SortOrder::Path);
+    }
+
+    #[test]
+    fn test_sort_order_from_str_age() {
+        assert_eq!(SortOrder::from_str("age"), SortOrder::Age);
+        assert_eq!(SortOrder::from_str("AGE"), SortOrder::Age);
+        assert_eq!(SortOrder::from_str("Age"), SortOrder::Age);
+    }
+
+    #[test]
+    fn test_sort_order_from_str_invalid_defaults_to_size() {
+        assert_eq!(SortOrder::from_str("invalid"), SortOrder::Size);
+        assert_eq!(SortOrder::from_str(""), SortOrder::Size);
+        assert_eq!(SortOrder::from_str("foo"), SortOrder::Size);
     }
 }

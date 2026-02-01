@@ -41,13 +41,9 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect, show_progress: bool) {
     );
 
     let base_style = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
-    let sort_style = if app.sort_flash > 0 {
-        Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        base_style
-    };
+    let sort_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
 
     let title_line = Line::from(vec![
         Span::styled(prefix, base_style),

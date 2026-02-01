@@ -165,3 +165,84 @@ fn test_multiple_profiles() {
     let results = json["results"].as_array().unwrap();
     assert_eq!(results.len(), 2);
 }
+
+#[test]
+fn test_sort_flag_size() {
+    let output = Command::new(cache_sweep_bin())
+        .arg("--json")
+        .arg("-d")
+        .arg("/tmp")
+        .arg("-t")
+        .arg("nonexistent_target_xyz")
+        .arg("-s")
+        .arg("size")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+}
+
+#[test]
+fn test_sort_flag_path() {
+    let output = Command::new(cache_sweep_bin())
+        .arg("--json")
+        .arg("-d")
+        .arg("/tmp")
+        .arg("-t")
+        .arg("nonexistent_target_xyz")
+        .arg("-s")
+        .arg("path")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+}
+
+#[test]
+fn test_sort_flag_age() {
+    let output = Command::new(cache_sweep_bin())
+        .arg("--json")
+        .arg("-d")
+        .arg("/tmp")
+        .arg("-t")
+        .arg("nonexistent_target_xyz")
+        .arg("-s")
+        .arg("age")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+}
+
+#[test]
+fn test_sort_flag_invalid_defaults_to_size() {
+    // Invalid sort value should not crash, falls back to size
+    let output = Command::new(cache_sweep_bin())
+        .arg("--json")
+        .arg("-d")
+        .arg("/tmp")
+        .arg("-t")
+        .arg("nonexistent_target_xyz")
+        .arg("-s")
+        .arg("invalid_sort_value")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+}
+
+#[test]
+fn test_profiles_and_targets_conflict() {
+    let output = Command::new(cache_sweep_bin())
+        .arg("--profiles")
+        .arg("node")
+        .arg("--targets")
+        .arg("node_modules")
+        .output()
+        .expect("Failed to execute command");
+
+    // Should fail due to conflict
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("cannot be used with"));
+}

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 #[command(version)]
 pub struct Args {
     /// Select profiles to search (comma-separated). Use without value to list.
-    #[arg(short = 'p', long, value_delimiter = ',')]
+    #[arg(short = 'p', long, value_delimiter = ',', conflicts_with = "targets")]
     pub profiles: Option<Vec<String>>,
 
     /// Starting directory for search
@@ -17,14 +17,6 @@ pub struct Args {
     /// Auto-delete all found directories (non-interactive)
     #[arg(short = 'D', long)]
     pub delete_all: bool,
-
-    /// Skip confirmation when using --delete-all
-    #[arg(short = 'y')]
-    pub yes: bool,
-
-    /// Hide error messages
-    #[arg(short = 'e', long)]
-    pub hide_errors: bool,
 
     /// Exclude directories (comma-separated)
     #[arg(short = 'E', long, value_delimiter = ',')]
