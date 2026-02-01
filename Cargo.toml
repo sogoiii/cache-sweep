@@ -1,0 +1,48 @@
+[package]
+name = "cache-sweep"
+version = "0.1.0"
+edition = "2021"
+description = "Fast TUI tool for finding and deleting dependency/cache folders"
+license = "MIT"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "fs", "time", "macros", "signal"] }
+tokio-util = "0.7"
+
+# Directory walking
+ignore = "0.4"
+
+# TUI
+ratatui = "0.29"
+crossterm = { version = "0.28", features = ["event-stream"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Errors
+thiserror = "2"
+anyhow = "1"
+
+# Async streams
+futures = "0.3"
+
+# CPU detection
+num_cpus = "1"
+
+# Serialization (for JSON output)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Human-readable sizes
+bytesize = "1"
+
+# Home directory
+dirs = "6"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
