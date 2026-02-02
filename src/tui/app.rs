@@ -27,7 +27,6 @@ pub struct TargetGroup {
 pub enum Panel {
     Results,
     Info,
-    Help,
     Analytics,
 }
 

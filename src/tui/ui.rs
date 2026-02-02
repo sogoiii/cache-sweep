@@ -232,7 +232,6 @@ fn draw_main(frame: &mut Frame, app: &App, area: Rect) {
     match app.panel {
         Panel::Results => draw_results_panel(frame, app, area),
         Panel::Info => panels::draw_info(frame, app, area),
-        Panel::Help => panels::draw_help(frame, area),
         Panel::Analytics => panels::draw_analytics(frame, app, area),
     }
 }
@@ -390,7 +389,7 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
                 app.filtered_indices.len(),
                 ByteSize::b(app.active_tab_subtotal())
             ),
-            _ => "↑/↓:navigate | SPACE:delete | /:search | t:multi | s:sort | a:stats | q:quit".to_string(),
+            Panel::Results => "↑/↓:navigate | SPACE:delete | /:search | t:multi | s:sort | a:stats | q:quit".to_string(),
         },
         Mode::Search => "Type to filter | Enter:confirm | Esc:cancel".to_string(),
         Mode::MultiSelect => "SPACE:toggle | a:all | Enter:delete selected | t/Esc:exit".to_string(),
