@@ -50,8 +50,9 @@ fn handle_normal_key(key: KeyEvent, app: &mut App) -> Action {
         KeyCode::End => {
             if !app.filtered_indices.is_empty() {
                 app.cursor = app.filtered_indices.len() - 1;
-                if app.cursor >= app.visible_height {
-                    app.scroll_offset = app.cursor - app.visible_height + 1;
+                if app.cursor >= app.visible_height - 2 {
+                    // Keep cursor 2 rows above the bottom (accounts for UI chrome)
+                    app.scroll_offset = app.cursor - app.visible_height + 3;
                 }
             }
             Action::Continue

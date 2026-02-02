@@ -227,8 +227,9 @@ impl App {
         // Adjust scroll offset
         if self.cursor < self.scroll_offset {
             self.scroll_offset = self.cursor;
-        } else if self.cursor >= self.scroll_offset + self.visible_height {
-            self.scroll_offset = self.cursor - self.visible_height + 1;
+        } else if self.cursor + 2 >= self.scroll_offset + self.visible_height {
+            // Keep cursor 2 rows above the bottom (accounts for UI chrome)
+            self.scroll_offset = self.cursor + 3 - self.visible_height;
         }
     }
 
@@ -327,6 +328,15 @@ impl App {
 mod tests {
     use super::*;
 
+    // Helper to create an App with N items for cursor tests
+    fn app_with_items(item_count: usize, visible_height: usize) -> App {
+        let mut app = App::new(false, SortOrder::Size);
+        app.visible_height = visible_height;
+        app.filtered_indices = (0..item_count).collect();
+        app
+    }
+
+    // SortOrder tests
     #[test]
     fn test_sort_order_from_str_size() {
         assert_eq!(SortOrder::from_str("size"), SortOrder::Size);
@@ -353,5 +363,179 @@ mod tests {
         assert_eq!(SortOrder::from_str("invalid"), SortOrder::Size);
         assert_eq!(SortOrder::from_str(""), SortOrder::Size);
         assert_eq!(SortOrder::from_str("foo"), SortOrder::Size);
+    }
+
+    // Cursor movement tests
+    #[test]
+    fn test_move_cursor_down_basic() {
+        let mut app = app_with_items(50, 20);
+        assert_eq!(app.cursor, 0);
+
+        app.move_cursor(1);
+        assert_eq!(app.cursor, 1);
+
+        app.move_cursor(5);
+        assert_eq!(app.cursor, 6);
+    }
+
+    #[test]
+    fn test_move_cursor_up_basic() {
+        let mut app = app_with_items(50, 20);
+        app.cursor = 10;
+
+        app.move_cursor(-1);
+        assert_eq!(app.cursor, 9);
+
+        app.move_cursor(-5);
+        assert_eq!(app.cursor, 4);
+    }
+
+    #[test]
+    fn test_move_cursor_does_not_go_negative() {
+        let mut app = app_with_items(50, 20);
+        app.cursor = 2;
+
+        app.move_cursor(-10);
+        assert_eq!(app.cursor, 0);
+    }
+
+    #[test]
+    fn test_move_cursor_does_not_exceed_list_length() {
+        let mut app = app_with_items(50, 20);
+        app.cursor = 45;
+
+        app.move_cursor(10);
+        assert_eq!(app.cursor, 49); // Last item
+    }
+
+    #[test]
+    fn test_move_cursor_empty_list() {
+        let mut app = app_with_items(0, 20);
+
+        app.move_cursor(1);
+        assert_eq!(app.cursor, 0);
+
+        app.move_cursor(-1);
+        assert_eq!(app.cursor, 0);
+    }
+
+    // Scroll offset tests
+    #[test]
+    fn test_scroll_keeps_2_row_buffer_at_bottom() {
+        let mut app = app_with_items(50, 20);
+        // visible_height = 20, so cursor at position 17 (0-indexed) should trigger scroll
+        // because 17 >= 0 + 20 - 2 = 18 is false, but 18 >= 18 is true
+
+        // Move to position 17 - no scroll yet
+        app.cursor = 17;
+        app.move_cursor(0); // Trigger scroll check
+        assert_eq!(app.scroll_offset, 0);
+
+        // Move to position 18 - should trigger scroll
+        app.move_cursor(1);
+        assert_eq!(app.cursor, 18);
+        // scroll_offset = 18 - 20 + 3 = 1
+        assert_eq!(app.scroll_offset, 1);
+    }
+
+    #[test]
+    fn test_scroll_down_maintains_buffer() {
+        let mut app = app_with_items(50, 20);
+
+        // Move cursor to trigger multiple scrolls
+        for _ in 0..30 {
+            app.move_cursor(1);
+            // Cursor should always be at most visible_height - 3 from scroll_offset
+            let visible_position = app.cursor - app.scroll_offset;
+            assert!(
+                visible_position <= app.visible_height - 3,
+                "At cursor {}, scroll_offset {}, visible_position {} exceeds limit {}",
+                app.cursor,
+                app.scroll_offset,
+                visible_position,
+                app.visible_height - 3
+            );
+        }
+    }
+
+    #[test]
+    fn test_scroll_up_adjusts_offset() {
+        let mut app = app_with_items(50, 20);
+        app.cursor = 25;
+        app.scroll_offset = 10;
+
+        // Move up past the visible area
+        app.move_cursor(-20);
+        assert_eq!(app.cursor, 5);
+        // scroll_offset should adjust to show cursor
+        assert_eq!(app.scroll_offset, 5);
+    }
+
+    #[test]
+    fn test_scroll_up_cursor_at_top() {
+        let mut app = app_with_items(50, 20);
+        app.cursor = 10;
+        app.scroll_offset = 10;
+
+        // Move up one - cursor goes above scroll_offset
+        app.move_cursor(-1);
+        assert_eq!(app.cursor, 9);
+        assert_eq!(app.scroll_offset, 9);
+    }
+
+    #[test]
+    fn test_no_scroll_when_list_smaller_than_visible() {
+        let mut app = app_with_items(10, 20);
+
+        // Move to end of list
+        app.move_cursor(15);
+        assert_eq!(app.cursor, 9); // Last item
+        assert_eq!(app.scroll_offset, 0); // No scroll needed
+    }
+
+    #[test]
+    fn test_page_down() {
+        let mut app = app_with_items(100, 20);
+
+        // Page down moves by visible_height
+        app.move_cursor(20);
+        assert_eq!(app.cursor, 20);
+        // Should have scrolled to maintain buffer
+        assert!(app.scroll_offset > 0);
+    }
+
+    #[test]
+    fn test_page_up() {
+        let mut app = app_with_items(100, 20);
+        app.cursor = 50;
+        app.scroll_offset = 35;
+
+        // Page up moves by -visible_height
+        app.move_cursor(-20);
+        assert_eq!(app.cursor, 30);
+        // scroll_offset should adjust
+        assert!(app.scroll_offset <= app.cursor);
+    }
+
+    #[test]
+    fn test_cursor_visible_position_never_exceeds_buffer() {
+        // Comprehensive test: navigate through entire list
+        let mut app = app_with_items(100, 20);
+
+        for _ in 0..99 {
+            app.move_cursor(1);
+
+            if app.scroll_offset > 0 || app.cursor >= app.visible_height - 2 {
+                let visible_pos = app.cursor - app.scroll_offset;
+                assert!(
+                    visible_pos <= app.visible_height - 3,
+                    "cursor {} scroll {} visible_pos {} exceeds {}",
+                    app.cursor,
+                    app.scroll_offset,
+                    visible_pos,
+                    app.visible_height - 3
+                );
+            }
+        }
     }
 }
