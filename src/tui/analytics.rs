@@ -62,7 +62,7 @@ impl AnalyticsData {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
 
-        let profile_name = Self::profile_for_target(&target_name);
+        let profile_name = Self::profile_for_target(&target_name, path);
 
         // Update target stats
         let target = self
@@ -104,7 +104,7 @@ impl AnalyticsData {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
 
-        let profile_name = Self::profile_for_target(&target_name);
+        let profile_name = Self::profile_for_target(&target_name, path);
 
         // Update target stats (only add if size wasn't already known)
         if let Some(target) = self.by_target.get_mut(&target_name) {
@@ -155,13 +155,81 @@ impl AnalyticsData {
     }
 
     /// Reverse lookup: find which profile contains this target
-    fn profile_for_target(target: &str) -> String {
+    /// For ambiguous targets (target, out), checks parent dir for marker files
+    fn profile_for_target(target: &str, path: &Path) -> String {
+        // Fast path: disambiguate `target` and `out` folders via parent markers
+        if target == "target" {
+            return Self::disambiguate_target_folder(path);
+        }
+        if target == "out" {
+            return Self::disambiguate_out_folder(path);
+        }
+
+        // Default: first profile that contains this target
         for profile in PROFILES.values() {
             if profile.targets.contains(&target) {
                 return profile.name.to_string();
             }
         }
         "other".to_string()
+    }
+
+    /// Disambiguate `target` folder: rust vs scala vs java
+    fn disambiguate_target_folder(path: &Path) -> String {
+        let Some(parent) = path.parent() else {
+            return "unknown".to_string();
+        };
+
+        // Priority: rust > scala > java
+        if parent.join("Cargo.toml").exists() || parent.join("Cargo.lock").exists() {
+            return "rust".to_string();
+        }
+        if parent.join("build.sbt").exists()
+            || parent.join("build.sc").exists()
+            || parent.join(".bloop").exists()
+            || parent.join(".metals").exists()
+        {
+            return "scala".to_string();
+        }
+        if parent.join("pom.xml").exists()
+            || parent.join("build.gradle").exists()
+            || parent.join("build.gradle.kts").exists()
+            || parent.join("gradlew").exists()
+        {
+            return "java".to_string();
+        }
+
+        "unknown".to_string()
+    }
+
+    /// Disambiguate `out` folder: node vs java vs dotnet
+    fn disambiguate_out_folder(path: &Path) -> String {
+        let Some(parent) = path.parent() else {
+            return "unknown".to_string();
+        };
+
+        // Priority: node > java > dotnet
+        if parent.join("tsconfig.json").exists() || parent.join("package.json").exists() {
+            return "node".to_string();
+        }
+        if parent.join("pom.xml").exists()
+            || parent.join("build.gradle").exists()
+            || parent.join(".idea").exists()
+        {
+            return "java".to_string();
+        }
+        // dotnet: check for *.csproj or *.sln
+        if let Ok(entries) = std::fs::read_dir(parent) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                if name_str.ends_with(".csproj") || name_str.ends_with(".sln") {
+                    return "dotnet".to_string();
+                }
+            }
+        }
+
+        "unknown".to_string()
     }
 
     /// Get results per second rate (0 when all work complete)
@@ -249,31 +317,245 @@ mod tests {
         assert!(analytics.top_largest.is_empty());
     }
 
-    // === profile_for_target() tests ===
+    // === profile_for_target() tests (non-ambiguous targets) ===
 
     #[test]
     fn test_profile_for_target_node_modules() {
-        assert_eq!(AnalyticsData::profile_for_target("node_modules"), "node");
+        let path = PathBuf::from("/project/node_modules");
+        assert_eq!(
+            AnalyticsData::profile_for_target("node_modules", &path),
+            "node"
+        );
     }
 
     #[test]
     fn test_profile_for_target_next() {
-        assert_eq!(AnalyticsData::profile_for_target(".next"), "node");
+        let path = PathBuf::from("/project/.next");
+        assert_eq!(AnalyticsData::profile_for_target(".next", &path), "node");
     }
 
     #[test]
     fn test_profile_for_target_venv() {
-        assert_eq!(AnalyticsData::profile_for_target(".venv"), "python");
+        let path = PathBuf::from("/project/.venv");
+        assert_eq!(AnalyticsData::profile_for_target(".venv", &path), "python");
     }
 
     #[test]
     fn test_profile_for_target_pycache() {
-        assert_eq!(AnalyticsData::profile_for_target("__pycache__"), "python");
+        let path = PathBuf::from("/project/__pycache__");
+        assert_eq!(
+            AnalyticsData::profile_for_target("__pycache__", &path),
+            "python"
+        );
     }
 
     #[test]
     fn test_profile_for_target_unknown() {
-        assert_eq!(AnalyticsData::profile_for_target("unknown_dir"), "other");
+        let path = PathBuf::from("/project/unknown_dir");
+        assert_eq!(
+            AnalyticsData::profile_for_target("unknown_dir", &path),
+            "other"
+        );
+    }
+
+    // === disambiguate_target_folder() tests ===
+
+    #[test]
+    fn test_target_rust_project() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("Cargo.toml"), "").unwrap();
+        let target_path = temp.path().join("target");
+
+        assert_eq!(
+            AnalyticsData::disambiguate_target_folder(&target_path),
+            "rust"
+        );
+    }
+
+    #[test]
+    fn test_target_rust_cargo_lock() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("Cargo.lock"), "").unwrap();
+        let target_path = temp.path().join("target");
+
+        assert_eq!(
+            AnalyticsData::disambiguate_target_folder(&target_path),
+            "rust"
+        );
+    }
+
+    #[test]
+    fn test_target_scala_build_sbt() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("build.sbt"), "").unwrap();
+        let target_path = temp.path().join("target");
+
+        assert_eq!(
+            AnalyticsData::disambiguate_target_folder(&target_path),
+            "scala"
+        );
+    }
+
+    #[test]
+    fn test_target_scala_build_sc() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("build.sc"), "").unwrap();
+        let target_path = temp.path().join("target");
+
+        assert_eq!(
+            AnalyticsData::disambiguate_target_folder(&target_path),
+            "scala"
+        );
+    }
+
+    #[test]
+    fn test_target_scala_bloop() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(temp.path().join(".bloop")).unwrap();
+        let target_path = temp.path().join("target");
+
+        assert_eq!(
+            AnalyticsData::disambiguate_target_folder(&target_path),
+            "scala"
+        );
+    }
+
+    #[test]
+    fn test_target_java_maven() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("pom.xml"), "").unwrap();
+        let target_path = temp.path().join("target");
+
+        assert_eq!(
+            AnalyticsData::disambiguate_target_folder(&target_path),
+            "java"
+        );
+    }
+
+    #[test]
+    fn test_target_java_gradle() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("build.gradle"), "").unwrap();
+        let target_path = temp.path().join("target");
+
+        assert_eq!(
+            AnalyticsData::disambiguate_target_folder(&target_path),
+            "java"
+        );
+    }
+
+    #[test]
+    fn test_target_java_gradle_kts() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("build.gradle.kts"), "").unwrap();
+        let target_path = temp.path().join("target");
+
+        assert_eq!(
+            AnalyticsData::disambiguate_target_folder(&target_path),
+            "java"
+        );
+    }
+
+    #[test]
+    fn test_target_unknown_fallback() {
+        let temp = tempfile::tempdir().unwrap();
+        // No marker files
+        let target_path = temp.path().join("target");
+
+        assert_eq!(
+            AnalyticsData::disambiguate_target_folder(&target_path),
+            "unknown"
+        );
+    }
+
+    #[test]
+    fn test_target_rust_priority_over_scala() {
+        // If both Cargo.toml and build.sbt exist, rust wins
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("Cargo.toml"), "").unwrap();
+        std::fs::write(temp.path().join("build.sbt"), "").unwrap();
+        let target_path = temp.path().join("target");
+
+        assert_eq!(
+            AnalyticsData::disambiguate_target_folder(&target_path),
+            "rust"
+        );
+    }
+
+    // === disambiguate_out_folder() tests ===
+
+    #[test]
+    fn test_out_typescript_project() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("tsconfig.json"), "").unwrap();
+        let out_path = temp.path().join("out");
+
+        assert_eq!(AnalyticsData::disambiguate_out_folder(&out_path), "node");
+    }
+
+    #[test]
+    fn test_out_node_project() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("package.json"), "").unwrap();
+        let out_path = temp.path().join("out");
+
+        assert_eq!(AnalyticsData::disambiguate_out_folder(&out_path), "node");
+    }
+
+    #[test]
+    fn test_out_java_maven() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("pom.xml"), "").unwrap();
+        let out_path = temp.path().join("out");
+
+        assert_eq!(AnalyticsData::disambiguate_out_folder(&out_path), "java");
+    }
+
+    #[test]
+    fn test_out_java_idea() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(temp.path().join(".idea")).unwrap();
+        let out_path = temp.path().join("out");
+
+        assert_eq!(AnalyticsData::disambiguate_out_folder(&out_path), "java");
+    }
+
+    #[test]
+    fn test_out_dotnet_csproj() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("MyApp.csproj"), "").unwrap();
+        let out_path = temp.path().join("out");
+
+        assert_eq!(AnalyticsData::disambiguate_out_folder(&out_path), "dotnet");
+    }
+
+    #[test]
+    fn test_out_dotnet_sln() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("MyApp.sln"), "").unwrap();
+        let out_path = temp.path().join("out");
+
+        assert_eq!(AnalyticsData::disambiguate_out_folder(&out_path), "dotnet");
+    }
+
+    #[test]
+    fn test_out_unknown_fallback() {
+        let temp = tempfile::tempdir().unwrap();
+        // No marker files
+        let out_path = temp.path().join("out");
+
+        assert_eq!(AnalyticsData::disambiguate_out_folder(&out_path), "unknown");
+    }
+
+    #[test]
+    fn test_out_node_priority_over_java() {
+        // If both package.json and pom.xml exist, node wins
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("package.json"), "").unwrap();
+        std::fs::write(temp.path().join("pom.xml"), "").unwrap();
+        let out_path = temp.path().join("out");
+
+        assert_eq!(AnalyticsData::disambiguate_out_folder(&out_path), "node");
     }
 
     // === record_result() tests ===
