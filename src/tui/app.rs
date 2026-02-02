@@ -10,7 +10,6 @@ use super::analytics::AnalyticsData;
 pub enum Panel {
     Results,
     Info,
-    Options,
     Help,
     Analytics,
 }

@@ -139,7 +139,6 @@ fn draw_main(frame: &mut Frame, app: &App, area: Rect) {
     match app.panel {
         Panel::Results => draw_results_panel(frame, app, area),
         Panel::Info => panels::draw_info(frame, app, area),
-        Panel::Options => panels::draw_options(frame, app, area),
         Panel::Help => panels::draw_help(frame, area),
         Panel::Analytics => panels::draw_analytics(frame, app, area),
     }

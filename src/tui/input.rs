@@ -107,16 +107,14 @@ fn handle_normal_key(key: KeyEvent, app: &mut App) -> Action {
         KeyCode::Left | KeyCode::Char('h') => {
             app.panel = match app.panel {
                 Panel::Info => Panel::Results,
-                Panel::Options => Panel::Help,
-                Panel::Results | Panel::Help | Panel::Analytics => Panel::Options,
+                Panel::Results | Panel::Help | Panel::Analytics => Panel::Help,
             };
             Action::Continue
         }
         KeyCode::Right | KeyCode::Char('l') => {
             app.panel = match app.panel {
                 Panel::Results => Panel::Info,
-                Panel::Help => Panel::Options,
-                Panel::Info | Panel::Options | Panel::Analytics => Panel::Results,
+                Panel::Info | Panel::Help | Panel::Analytics => Panel::Results,
             };
             Action::Continue
         }
