@@ -13,6 +13,38 @@ use super::app::{App, Mode, Panel};
 use super::panels;
 use super::widgets::DualProgressBar;
 
+/// Determines the style for a result item based on its state.
+#[allow(clippy::fn_params_excessive_bools)] // Bools map directly to item state flags
+fn result_item_style(
+    is_cursor: bool,
+    is_deleted: bool,
+    is_selected: bool,
+    is_sensitive: bool,
+) -> Style {
+    if is_cursor {
+        if is_deleted {
+            // Cursor on deleted: dim background, still visible
+            Style::default()
+                .bg(Color::DarkGray)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .bg(Color::Blue)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD)
+        }
+    } else if is_deleted {
+        Style::default().fg(Color::DarkGray)
+    } else if is_selected {
+        Style::default().fg(Color::LightBlue)
+    } else if is_sensitive {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    }
+}
+
 pub fn draw(frame: &mut Frame, app: &App) {
     let show_progress = app.scanning || app.is_calculating_sizes();
     // Gradient bar needs: 1 (title border top) + 1 (title text) + 1 (bar) + 1 (labels) + 1 (border bottom) = 5
@@ -212,20 +244,12 @@ fn draw_results_panel(frame: &mut Frame, app: &App, area: Rect) {
 
                 let line_content = format!("{path_portion:<path_width$} {age_str} {size_str}");
 
-                let style = if item.is_deleted {
-                    Style::default().fg(Color::DarkGray)
-                } else if is_cursor {
-                    Style::default()
-                        .bg(Color::Blue)
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD)
-                } else if item.is_selected {
-                    Style::default().fg(Color::LightBlue)
-                } else if item.risk.is_sensitive {
-                    Style::default().fg(Color::Yellow)
-                } else {
-                    Style::default()
-                };
+                let style = result_item_style(
+                    is_cursor,
+                    item.is_deleted,
+                    item.is_selected,
+                    item.risk.is_sensitive,
+                );
 
                 ListItem::new(Line::from(Span::styled(line_content, style)))
             }),
@@ -256,4 +280,70 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
         .block(Block::default().borders(Borders::ALL));
 
     frame.render_widget(footer, area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cursor_on_normal_item() {
+        let style = result_item_style(true, false, false, false);
+        assert_eq!(style.bg, Some(Color::Blue));
+        assert_eq!(style.fg, Some(Color::White));
+    }
+
+    #[test]
+    fn test_cursor_on_deleted_item() {
+        let style = result_item_style(true, true, false, false);
+        // Cursor still visible on deleted items with dim background
+        assert_eq!(style.bg, Some(Color::DarkGray));
+        assert_eq!(style.fg, Some(Color::White));
+    }
+
+    #[test]
+    fn test_deleted_item_no_cursor() {
+        let style = result_item_style(false, true, false, false);
+        assert_eq!(style.bg, None);
+        assert_eq!(style.fg, Some(Color::DarkGray));
+    }
+
+    #[test]
+    fn test_selected_item_no_cursor() {
+        let style = result_item_style(false, false, true, false);
+        assert_eq!(style.fg, Some(Color::LightBlue));
+    }
+
+    #[test]
+    fn test_sensitive_item_no_cursor() {
+        let style = result_item_style(false, false, false, true);
+        assert_eq!(style.fg, Some(Color::Yellow));
+    }
+
+    #[test]
+    fn test_normal_item_no_cursor() {
+        let style = result_item_style(false, false, false, false);
+        assert_eq!(style, Style::default());
+    }
+
+    #[test]
+    fn test_cursor_takes_priority_over_selected() {
+        let style = result_item_style(true, false, true, false);
+        // Cursor style wins over selected
+        assert_eq!(style.bg, Some(Color::Blue));
+    }
+
+    #[test]
+    fn test_cursor_takes_priority_over_sensitive() {
+        let style = result_item_style(true, false, false, true);
+        // Cursor style wins over sensitive
+        assert_eq!(style.bg, Some(Color::Blue));
+    }
+
+    #[test]
+    fn test_deleted_takes_priority_over_selected() {
+        let style = result_item_style(false, true, true, false);
+        // Deleted style wins over selected (no cursor)
+        assert_eq!(style.fg, Some(Color::DarkGray));
+    }
 }
