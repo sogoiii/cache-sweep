@@ -104,7 +104,7 @@ fn draw_results_panel(frame: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // Title + header row
+            Constraint::Length(2), // Title + header row (no gap)
             Constraint::Min(1),    // Results list
         ])
         .split(area);
