@@ -79,7 +79,7 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect, show_progress: bool) {
     let prefix = format!(
         " cache-sweep | {} results | {} potential | {} freed | sort:",
         app.filtered_indices.len(),
-        ByteSize::b(app.total_size),
+        ByteSize::b(app.active_tab_subtotal()),
         ByteSize::b(app.freed_size),
     );
 
@@ -376,20 +376,14 @@ fn build_result_item(
 }
 
 fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
-    use bytesize::ByteSize;
-
     let has_tabs = app.target_groups.len() > 1;
 
     let help_text = match app.mode {
         Mode::Normal => match app.panel {
             Panel::Info => "↑/↓:navigate | ←:back | o:open | q:quit".to_string(),
             Panel::Analytics => "↑/↓:scroll | a/Esc:back | q:quit".to_string(),
-            _ if has_tabs => format!(
-                "Tab/⇧Tab:switch │ Showing: {} │ Subtotal: {} │ ↑/↓ SPACE:del /:search s:sort q:quit",
-                app.filtered_indices.len(),
-                ByteSize::b(app.active_tab_subtotal())
-            ),
-            Panel::Results => "↑/↓:navigate | SPACE:delete | /:search | t:multi | s:sort | a:stats | q:quit".to_string(),
+            _ if has_tabs => "Tab/⇧Tab:switch | ↑/↓:nav | /:search | s:sort | t:multi | SPACE:del | a:stats | q:quit".to_string(),
+            Panel::Results => "↑/↓:nav | /:search | s:sort | t:multi | SPACE:del | a:stats | q:quit".to_string(),
         },
         Mode::Search => "Type to filter | Enter:confirm | Esc:cancel".to_string(),
         Mode::MultiSelect => "SPACE:toggle | a:all | Enter:delete selected | t/Esc:exit".to_string(),
