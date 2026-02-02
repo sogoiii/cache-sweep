@@ -1,3 +1,4 @@
+mod analytics;
 mod app;
 mod cleanup;
 mod event_loop;

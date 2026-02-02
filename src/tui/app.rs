@@ -4,12 +4,15 @@ use std::time::SystemTime;
 use crate::risk::{analyze_risk, RiskAnalysis};
 use crate::scanner::ScanResult;
 
+use super::analytics::AnalyticsData;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
     Results,
     Info,
     Options,
     Help,
+    Analytics,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,6 +85,9 @@ pub struct App {
     pub sizes_calculated: usize,
     pub spinner_tick: usize,
     pub sort_flash: usize,
+    // Analytics
+    pub analytics: AnalyticsData,
+    pub analytics_scroll: usize,
 }
 
 impl App {
@@ -107,6 +113,8 @@ impl App {
             sizes_calculated: 0,
             spinner_tick: 0,
             sort_flash: 0,
+            analytics: AnalyticsData::new(),
+            analytics_scroll: 0,
         }
     }
 
@@ -119,6 +127,10 @@ impl App {
                 continue;
             }
 
+            // Record in analytics
+            self.analytics
+                .record_result(&item.scan_result.path, item.scan_result.size);
+
             self.results.push(item);
         }
         // Sort immediately so results display in correct order
@@ -128,11 +140,16 @@ impl App {
 
     pub fn update_size(&mut self, index: usize, size: u64, file_count: u64) {
         if let Some(item) = self.results.get_mut(index) {
+            let old_size = item.scan_result.size;
             item.scan_result.size = Some(size);
             item.scan_result.file_count = Some(file_count);
             self.total_size += size; // O(1) incremental update
             self.sizes_calculated += 1;
             self.needs_sort = true; // Debounce: sort on tick instead of every update
+
+            // Update analytics
+            self.analytics
+                .update_size(&item.scan_result.path.clone(), old_size, size);
         }
     }
 
@@ -311,8 +328,14 @@ impl App {
 
     pub fn scan_complete(&mut self) {
         self.scanning = false;
+        self.analytics.mark_scan_complete();
         // Ensure filter is applied when scan finishes
         self.apply_filter();
+    }
+
+    /// Called when all size calculations are done
+    pub fn sizes_complete(&mut self) {
+        self.analytics.mark_sizes_complete();
     }
 
     pub fn add_error(&mut self, error: String) {

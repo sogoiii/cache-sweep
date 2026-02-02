@@ -29,6 +29,7 @@ pub fn draw_help(frame: &mut Frame, area: Rect) {
         Line::from("  /        Search mode"),
         Line::from("  t        Multi-select"),
         Line::from("  s        Cycle sort"),
+        Line::from("  a        Analytics panel"),
         Line::from("  e        Show errors"),
         Line::from("  q/Esc    Quit"),
         Line::from(""),

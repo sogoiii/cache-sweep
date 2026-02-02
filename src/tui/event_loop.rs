@@ -106,6 +106,10 @@ pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
             // Size updates
             Some((idx, size, file_count)) = size_rx.recv() => {
                 app.update_size(idx, size, file_count);
+                // Check if all sizes are now calculated
+                if !app.scanning && !app.is_calculating_sizes() {
+                    app.sizes_complete();
+                }
             }
 
             // Deletion commands

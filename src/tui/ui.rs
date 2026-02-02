@@ -95,6 +95,7 @@ fn draw_main(frame: &mut Frame, app: &App, area: Rect) {
         Panel::Info => panels::draw_info(frame, app, area),
         Panel::Options => panels::draw_options(frame, app, area),
         Panel::Help => panels::draw_help(frame, area),
+        Panel::Analytics => panels::draw_analytics(frame, app, area),
     }
 }
 
@@ -229,7 +230,8 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
     let help_text = match app.mode {
         Mode::Normal => match app.panel {
             Panel::Info => "↑/↓:navigate | ←:back | o:open | q:quit",
-            _ => "↑/↓:navigate | SPACE:delete | /:search | t:multi-select | s:sort | q:quit",
+            Panel::Analytics => "↑/↓:scroll | a/Esc:back | q:quit",
+            _ => "↑/↓:navigate | SPACE:delete | /:search | t:multi-select | s:sort | a:analytics | q:quit",
         },
         Mode::Search => "Type to filter | Enter:confirm | Esc:cancel",
         Mode::MultiSelect => "SPACE:toggle | a:all | Enter:delete selected | t/Esc:exit",
