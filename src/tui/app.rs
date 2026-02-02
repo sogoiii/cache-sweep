@@ -132,9 +132,8 @@ impl App {
 
             self.results.push(item);
         }
-        // Sort immediately so results display in correct order
-        self.sort_results();
-        self.apply_filter();
+        // Rebuild display indices (filter + sort)
+        self.rebuild_display_indices();
     }
 
     pub fn update_size(&mut self, index: usize, size: u64, file_count: u64) {
@@ -158,62 +157,69 @@ impl App {
 
         // Handle deferred sort (debounced from size updates)
         if self.needs_sort {
-            self.sort_results();
-            self.apply_filter();
+            self.rebuild_display_indices();
             self.needs_sort = false;
         }
 
         // Handle deferred filter (e.g., after deletion)
         if self.needs_filter {
-            self.apply_filter();
+            self.rebuild_display_indices();
             self.needs_filter = false;
         }
     }
 
-    fn sort_results(&mut self) {
-        match self.sort_order {
-            SortOrder::Size => {
-                self.results.sort_by(|a, b| {
-                    b.scan_result
-                        .size
-                        .unwrap_or(0)
-                        .cmp(&a.scan_result.size.unwrap_or(0))
-                });
-            }
-            SortOrder::Path => {
-                self.results
-                    .sort_by(|a, b| a.scan_result.path.cmp(&b.scan_result.path));
-            }
-            SortOrder::Age => {
-                self.results.sort_by(|a, b| {
-                    let a_time = a.scan_result.modified.unwrap_or(SystemTime::UNIX_EPOCH);
-                    let b_time = b.scan_result.modified.unwrap_or(SystemTime::UNIX_EPOCH);
-                    a_time.cmp(&b_time)
-                });
-            }
-        }
-    }
-
-    fn apply_filter(&mut self) {
-        if self.search_query.is_empty() {
-            self.filtered_indices = (0..self.results.len()).collect();
-        } else {
-            let query = self.search_query.to_lowercase();
-            self.filtered_indices = self
-                .results
-                .iter()
-                .enumerate()
-                .filter(|(_, item)| {
-                    !item.is_deleted
-                        && item
+    /// Rebuilds `filtered_indices` by filtering then sorting.
+    /// Results vec is NEVER reordered - indices point into stable positions.
+    fn rebuild_display_indices(&mut self) {
+        // Step 1: Filter - collect indices that match criteria
+        let query = self.search_query.to_lowercase();
+        self.filtered_indices = self
+            .results
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| {
+                !item.is_deleted
+                    && (self.search_query.is_empty()
+                        || item
                             .scan_result
                             .path
                             .to_string_lossy()
                             .to_lowercase()
-                            .contains(&query)
-                })
-                .map(|(i, _)| i)
-                .collect();
+                            .contains(&query))
+            })
+            .map(|(i, _)| i)
+            .collect();
+
+        // Step 2: Sort the indices (not the results!) based on sort order
+        match self.sort_order {
+            SortOrder::Size => {
+                self.filtered_indices.sort_by(|&a, &b| {
+                    let size_a = self.results[a].scan_result.size.unwrap_or(0);
+                    let size_b = self.results[b].scan_result.size.unwrap_or(0);
+                    size_b.cmp(&size_a) // Descending
+                });
+            }
+            SortOrder::Path => {
+                self.filtered_indices.sort_by(|&a, &b| {
+                    self.results[a]
+                        .scan_result
+                        .path
+                        .cmp(&self.results[b].scan_result.path)
+                });
+            }
+            SortOrder::Age => {
+                self.filtered_indices.sort_by(|&a, &b| {
+                    let time_a = self.results[a]
+                        .scan_result
+                        .modified
+                        .unwrap_or(SystemTime::UNIX_EPOCH);
+                    let time_b = self.results[b]
+                        .scan_result
+                        .modified
+                        .unwrap_or(SystemTime::UNIX_EPOCH);
+                    time_a.cmp(&time_b) // Oldest first
+                });
+            }
         }
 
         // Adjust cursor if out of bounds
@@ -328,8 +334,8 @@ impl App {
     pub fn scan_complete(&mut self) {
         self.scanning = false;
         self.analytics.mark_scan_complete();
-        // Ensure filter is applied when scan finishes
-        self.apply_filter();
+        // Ensure display indices are rebuilt when scan finishes
+        self.rebuild_display_indices();
     }
 
     /// Called when all size calculations are done
@@ -342,8 +348,7 @@ impl App {
     }
 
     pub fn apply_sort_and_filter(&mut self) {
-        self.sort_results();
-        self.apply_filter();
+        self.rebuild_display_indices();
         self.sort_flash = 5; // Brief yellow highlight (~500ms)
     }
 
@@ -379,6 +384,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     // Helper to create an App with N items for cursor tests
     fn app_with_items(item_count: usize, visible_height: usize) -> App {
@@ -589,5 +595,120 @@ mod tests {
                 );
             }
         }
+    }
+
+    // === Stable index tests (regression prevention for size calculation bug) ===
+
+    fn make_scan_result(path: &str, size: Option<u64>) -> ScanResult {
+        ScanResult {
+            path: PathBuf::from(path),
+            size,
+            file_count: None,
+            modified: None,
+            is_sensitive: false,
+        }
+    }
+
+    #[test]
+    fn test_results_order_stable_after_add() {
+        let mut app = App::new(false, SortOrder::Size);
+
+        // Add results with different sizes
+        app.add_results(vec![
+            make_scan_result("/a", Some(100)),
+            make_scan_result("/b", Some(500)),
+            make_scan_result("/c", Some(200)),
+        ]);
+
+        // Results should be in original order (append-only)
+        assert_eq!(app.results[0].scan_result.path, PathBuf::from("/a"));
+        assert_eq!(app.results[1].scan_result.path, PathBuf::from("/b"));
+        assert_eq!(app.results[2].scan_result.path, PathBuf::from("/c"));
+    }
+
+    #[test]
+    fn test_filtered_indices_sorted_not_results() {
+        let mut app = App::new(false, SortOrder::Size);
+
+        app.add_results(vec![
+            make_scan_result("/small", Some(100)),
+            make_scan_result("/large", Some(500)),
+            make_scan_result("/medium", Some(200)),
+        ]);
+
+        // Results still in original order
+        assert_eq!(app.results[0].scan_result.path, PathBuf::from("/small"));
+        assert_eq!(app.results[1].scan_result.path, PathBuf::from("/large"));
+        assert_eq!(app.results[2].scan_result.path, PathBuf::from("/medium"));
+
+        // But filtered_indices should be sorted by size desc: [1, 2, 0]
+        assert_eq!(app.filtered_indices, vec![1, 2, 0]);
+    }
+
+    #[test]
+    fn test_update_size_uses_stable_index() {
+        let mut app = App::new(false, SortOrder::Size);
+
+        // Add results - index 0=/a, index 1=/b, index 2=/c
+        app.add_results(vec![
+            make_scan_result("/a", None),
+            make_scan_result("/b", None),
+            make_scan_result("/c", None),
+        ]);
+
+        // Simulate size calculation completing for index 1 (/b)
+        app.update_size(1, 999, 10);
+
+        // Index 1 should ALWAYS be /b, regardless of sorting
+        assert_eq!(app.results[1].scan_result.path, PathBuf::from("/b"));
+        assert_eq!(app.results[1].scan_result.size, Some(999));
+    }
+
+    #[test]
+    fn test_update_size_correct_after_multiple_sorts() {
+        let mut app = App::new(false, SortOrder::Size);
+
+        app.add_results(vec![
+            make_scan_result("/first", Some(100)),
+            make_scan_result("/second", None), // No size yet
+            make_scan_result("/third", Some(300)),
+        ]);
+
+        // Change sort order multiple times
+        app.sort_order = SortOrder::Path;
+        app.apply_sort_and_filter();
+        app.sort_order = SortOrder::Size;
+        app.apply_sort_and_filter();
+
+        // Now update size for index 1 (should still be /second)
+        app.update_size(1, 500, 5);
+
+        // Verify /second got the update, not some other item
+        assert_eq!(app.results[1].scan_result.path, PathBuf::from("/second"));
+        assert_eq!(app.results[1].scan_result.size, Some(500));
+    }
+
+    #[test]
+    fn test_visible_results_uses_filtered_order() {
+        let mut app = App::new(false, SortOrder::Size);
+        app.visible_height = 10;
+
+        app.add_results(vec![
+            make_scan_result("/small", Some(100)),
+            make_scan_result("/large", Some(500)),
+            make_scan_result("/medium", Some(200)),
+        ]);
+
+        let visible = app.visible_results();
+
+        // Should be in sorted order: large, medium, small
+        assert_eq!(visible[0].1.scan_result.path, PathBuf::from("/large"));
+        assert_eq!(visible[1].1.scan_result.path, PathBuf::from("/medium"));
+        assert_eq!(visible[2].1.scan_result.path, PathBuf::from("/small"));
+
+        // But the indices returned should be the raw indices
+        assert_eq!(visible[0].0, 1); // /large is at raw index 1
+        assert_eq!(visible[1].0, 2); // /medium is at raw index 2
+        assert_eq!(visible[2].0, 0); // /small is at raw index 0
     }
 }
