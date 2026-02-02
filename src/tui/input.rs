@@ -64,6 +64,7 @@ fn handle_analytics_key(key: KeyEvent, app: &mut App) -> Action {
     }
 }
 
+#[allow(clippy::too_many_lines)] // Key handling is naturally a large match
 fn handle_normal_key(key: KeyEvent, app: &mut App) -> Action {
     match key.code {
         // Quit
@@ -93,10 +94,10 @@ fn handle_normal_key(key: KeyEvent, app: &mut App) -> Action {
             Action::Continue
         }
         KeyCode::End => {
-            if !app.filtered_indices.is_empty() {
-                app.cursor = app.filtered_indices.len() - 1;
+            let len = app.filtered_indices.len();
+            if len > 0 {
+                app.cursor = len - 1;
                 if app.cursor >= app.visible_height - 2 {
-                    // Keep cursor 2 rows above the bottom (accounts for UI chrome)
                     app.scroll_offset = app.cursor - app.visible_height + 3;
                 }
             }
@@ -144,6 +145,15 @@ fn handle_normal_key(key: KeyEvent, app: &mut App) -> Action {
                 SortOrder::Age => SortOrder::Size,
             };
             app.apply_sort_and_filter();
+            Action::Continue
+        }
+        // Tab navigation (when multiple target types exist)
+        KeyCode::Tab if app.panel != Panel::Info && app.target_groups.len() > 1 => {
+            app.next_tab();
+            Action::Continue
+        }
+        KeyCode::BackTab if app.panel != Panel::Info && app.target_groups.len() > 1 => {
+            app.prev_tab();
             Action::Continue
         }
 

@@ -53,7 +53,7 @@ pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
     let dry_run = args.dry_run;
 
     loop {
-        terminal.draw(|f| ui::draw(f, &app))?;
+        terminal.draw(|f| ui::draw(f, &mut app))?;
 
         // Use biased to prioritize keyboard input
         tokio::select! {

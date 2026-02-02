@@ -45,24 +45,32 @@ fn result_item_style(
     }
 }
 
-pub fn draw(frame: &mut Frame, app: &App) {
+pub fn draw(frame: &mut Frame, app: &mut App) {
     let show_progress = app.scanning || app.is_calculating_sizes();
     // Gradient bar needs: 1 (title border top) + 1 (title text) + 1 (bar) + 1 (labels) + 1 (border bottom) = 5
     // Or when not showing progress: 3 (standard header with borders)
     let header_height = if show_progress { 5 } else { 3 };
 
+    // Show tabs row when there are multiple target types
+    let show_tabs = app.target_groups.len() > 1;
+    let tabs_height = u16::from(show_tabs);
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(header_height), // Header (expands when scanning)
+            Constraint::Length(tabs_height),   // Tabs row (if multiple targets)
             Constraint::Min(10),               // Main content
             Constraint::Length(3),             // Footer/Status
         ])
         .split(frame.area());
 
     draw_header(frame, app, chunks[0], show_progress);
-    draw_main(frame, app, chunks[1]);
-    draw_footer(frame, app, chunks[2]);
+    if show_tabs {
+        draw_tabs(frame, app, chunks[1]);
+    }
+    draw_main(frame, app, chunks[2]);
+    draw_footer(frame, app, chunks[3]);
 }
 
 fn draw_header(frame: &mut Frame, app: &App, area: Rect, show_progress: bool) {
@@ -135,6 +143,91 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect, show_progress: bool) {
     }
 }
 
+fn draw_tabs(frame: &mut Frame, app: &mut App, area: Rect) {
+    let all_count = app.results.iter().filter(|r| !r.is_deleted).count();
+    let all_tab = format!("All ({all_count})");
+    let all_tab_width = all_tab.len() + 3; // + padding/divider
+
+    // Calculate available width for scrollable groups
+    let available_width = area.width as usize;
+    let indicator_width = 4; // " ◀ " or " ▶ "
+    let scrollable_width = available_width.saturating_sub(all_tab_width + indicator_width * 2);
+
+    // Build group tab strings and calculate which ones fit
+    let group_tabs: Vec<String> = app
+        .target_groups
+        .iter()
+        .map(|g| format!("{} ({})", g.name, g.count))
+        .collect();
+
+    // Calculate how many groups fit starting from scroll offset
+    let mut visible_groups = Vec::new();
+    let mut used_width = 0;
+    let divider_width = 3; // " │ "
+
+    for (i, tab) in group_tabs.iter().enumerate().skip(app.tab_scroll_offset) {
+        let tab_width = tab.len() + divider_width;
+        if used_width + tab_width > scrollable_width && !visible_groups.is_empty() {
+            break;
+        }
+        visible_groups.push((i, tab.clone()));
+        used_width += tab_width;
+    }
+
+    // Update app's visible count for scroll calculations
+    app.visible_group_count = visible_groups.len();
+
+    // Check for overflow indicators
+    let has_left_overflow = app.tab_scroll_offset > 0;
+    let has_right_overflow = app.tab_scroll_offset + visible_groups.len() < app.target_groups.len();
+
+    // Build the spans
+    let mut spans: Vec<Span> = Vec::new();
+
+    // "All" tab (always visible, highlighted if selected)
+    let all_style = if app.active_tab == 0 {
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    spans.push(Span::styled(all_tab, all_style));
+    spans.push(Span::styled(" │ ", Style::default().fg(Color::DarkGray)));
+
+    // Left overflow indicator
+    if has_left_overflow {
+        spans.push(Span::styled("◀ ", Style::default().fg(Color::Yellow)));
+    }
+
+    // Visible group tabs
+    for (i, (group_idx, tab_text)) in visible_groups.iter().enumerate() {
+        let is_selected = app.active_tab == group_idx + 1; // +1 because 0 is "All"
+        let style = if is_selected {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+        spans.push(Span::styled(tab_text.clone(), style));
+
+        // Add divider between groups (not after last)
+        if i < visible_groups.len() - 1 {
+            spans.push(Span::styled(" │ ", Style::default().fg(Color::DarkGray)));
+        }
+    }
+
+    // Right overflow indicator
+    if has_right_overflow {
+        spans.push(Span::styled(" ▶", Style::default().fg(Color::Yellow)));
+    }
+
+    let line = Line::from(spans);
+    let paragraph = Paragraph::new(line);
+    frame.render_widget(paragraph, area);
+}
+
 fn draw_main(frame: &mut Frame, app: &App, area: Rect) {
     match app.panel {
         Panel::Results => draw_results_panel(frame, app, area),
@@ -193,66 +286,7 @@ fn draw_results_panel(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(header, chunks[0]);
 
     // Results list
-    let visible = app.visible_results();
-    let mut items: Vec<ListItem> = Vec::with_capacity(visible.len());
-    items.extend(
-        visible
-            .iter()
-            .enumerate()
-            .map(|(display_idx, (_real_idx, item))| {
-                let is_cursor = display_idx + app.scroll_offset == app.cursor;
-                let path = item.scan_result.path.to_string_lossy();
-
-                // Size display
-                let size_str = item.scan_result.size.map_or_else(
-                    || format!("{:>width$}", "...", width = size_width),
-                    |size| format!("{:>width$}", ByteSize::b(size), width = size_width),
-                );
-
-                // Age display
-                let age_str = item.scan_result.modified.map_or_else(
-                    || format!("{:>width$}", "?", width = age_width),
-                    |time| {
-                        let age = SystemTime::now()
-                            .duration_since(time)
-                            .unwrap_or(Duration::ZERO);
-                        let days = age.as_secs() / 86400;
-                        format!("{:>width$}", format!("{days}d"), width = age_width)
-                    },
-                );
-
-                // Status indicators
-                let status = if item.is_deleted {
-                    "[DELETED] "
-                } else if item.is_deleting {
-                    "[DELETING] "
-                } else if item.risk.is_sensitive {
-                    "⚠️ "
-                } else {
-                    ""
-                };
-
-                let selection_marker = if item.is_selected { "[x] " } else { "[ ] " };
-
-                // Build the path portion with status
-                let path_portion = if app.mode == Mode::MultiSelect {
-                    format!("{selection_marker}{status}{path}")
-                } else {
-                    format!("{status}{path}")
-                };
-
-                let line_content = format!("{path_portion:<path_width$} {age_str} {size_str}");
-
-                let style = result_item_style(
-                    is_cursor,
-                    item.is_deleted,
-                    item.is_selected,
-                    item.risk.is_sensitive,
-                );
-
-                ListItem::new(Line::from(Span::styled(line_content, style)))
-            }),
-    );
+    let items: Vec<ListItem> = build_list_items(app, age_width, size_width, path_width);
 
     let list = List::new(items).block(
         Block::default()
@@ -263,15 +297,103 @@ fn draw_results_panel(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(list, chunks[1]);
 }
 
+/// Builds list items for the results view
+fn build_list_items(
+    app: &App,
+    age_width: usize,
+    size_width: usize,
+    path_width: usize,
+) -> Vec<ListItem<'static>> {
+    let visible = app.visible_results();
+    visible
+        .iter()
+        .enumerate()
+        .map(|(display_idx, (_real_idx, item))| {
+            let is_cursor = display_idx + app.scroll_offset == app.cursor;
+            build_result_item(app, item, is_cursor, age_width, size_width, path_width)
+        })
+        .collect()
+}
+
+/// Builds a single result item row
+fn build_result_item(
+    app: &App,
+    item: &super::app::ResultItem,
+    is_cursor: bool,
+    age_width: usize,
+    size_width: usize,
+    path_width: usize,
+) -> ListItem<'static> {
+    let path = item.scan_result.path.to_string_lossy().to_string();
+
+    // Size display
+    let size_str = item.scan_result.size.map_or_else(
+        || format!("{:>width$}", "...", width = size_width),
+        |size| format!("{:>width$}", ByteSize::b(size), width = size_width),
+    );
+
+    // Age display
+    let age_str = item.scan_result.modified.map_or_else(
+        || format!("{:>width$}", "?", width = age_width),
+        |time| {
+            let age = SystemTime::now()
+                .duration_since(time)
+                .unwrap_or(Duration::ZERO);
+            let days = age.as_secs() / 86400;
+            format!("{:>width$}", format!("{days}d"), width = age_width)
+        },
+    );
+
+    // Status indicators
+    let status = if item.is_deleted {
+        "[DELETED] "
+    } else if item.is_deleting {
+        "[DELETING] "
+    } else if item.risk.is_sensitive {
+        "⚠️ "
+    } else {
+        ""
+    };
+
+    let selection_marker = if item.is_selected { "[x] " } else { "[ ] " };
+
+    // Build the path portion with status
+    let path_portion = if app.mode == Mode::MultiSelect {
+        format!("{selection_marker}{status}{path}")
+    } else {
+        format!("{status}{path}")
+    };
+
+    let line_content = format!("{path_portion:<path_width$} {age_str} {size_str}");
+
+    let style = result_item_style(
+        is_cursor,
+        item.is_deleted,
+        item.is_selected,
+        item.risk.is_sensitive,
+    );
+
+    ListItem::new(Line::from(Span::styled(line_content, style)))
+}
+
 fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
+    use bytesize::ByteSize;
+
+    let has_tabs = app.target_groups.len() > 1;
+
     let help_text = match app.mode {
         Mode::Normal => match app.panel {
-            Panel::Info => "↑/↓:navigate | ←:back | o:open | q:quit",
-            Panel::Analytics => "↑/↓:scroll | a/Esc:back | q:quit",
-            _ => "↑/↓:navigate | SPACE:delete | /:search | t:multi-select | s:sort | a:analytics | q:quit",
+            Panel::Info => "↑/↓:navigate | ←:back | o:open | q:quit".to_string(),
+            Panel::Analytics => "↑/↓:scroll | a/Esc:back | q:quit".to_string(),
+            _ if has_tabs => format!(
+                "Tab/⇧Tab:switch │ Showing: {} │ Subtotal: {} │ ↑/↓ SPACE:del /:search s:sort q:quit",
+                app.filtered_indices.len(),
+                ByteSize::b(app.active_tab_subtotal())
+            ),
+            _ => "↑/↓:navigate | SPACE:delete | /:search | t:multi | s:sort | a:stats | q:quit".to_string(),
         },
-        Mode::Search => "Type to filter | Enter:confirm | Esc:cancel",
-        Mode::MultiSelect => "SPACE:toggle | a:all | Enter:delete selected | t/Esc:exit",
+        Mode::Search => "Type to filter | Enter:confirm | Esc:cancel".to_string(),
+        Mode::MultiSelect => "SPACE:toggle | a:all | Enter:delete selected | t/Esc:exit".to_string(),
     };
 
     let footer = Paragraph::new(help_text)
