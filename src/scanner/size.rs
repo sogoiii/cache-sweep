@@ -2,7 +2,13 @@ use std::path::Path;
 
 use tokio::sync::Semaphore;
 
-static SIZE_SEMAPHORE: Semaphore = Semaphore::const_new(10);
+/// Limits concurrent size calculations to avoid overwhelming disk I/O.
+/// - HDD: 4-8 optimal (seeks are slow)
+/// - SATA SSD: 16-32 (controller queue depth ~32)
+/// - `NVMe`: 32-64 (diminishing returns beyond)
+///
+/// 32 is a safe default for modern systems.
+static SIZE_SEMAPHORE: Semaphore = Semaphore::const_new(32);
 
 /// Returns `(total_size, file_count)`.
 pub async fn calculate_size(path: &Path) -> (u64, u64) {

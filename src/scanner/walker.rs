@@ -82,9 +82,10 @@ pub fn start_scan(
                         // Check if target
                         if targets.iter().any(|t| file_name == *t) {
                             let result = ScanResult::new(entry.path().to_path_buf());
-                            if let Ok(mut b) = batcher.lock() {
-                                b.add(result);
-                            }
+                            batcher
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .add(result);
                             // Don't descend into matched directory
                             return WalkState::Skip;
                         }
@@ -95,9 +96,10 @@ pub fn start_scan(
             });
 
         // Flush remaining results
-        if let Ok(mut b) = batcher.lock() {
-            b.flush();
-        };
+        batcher
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .flush();
     });
 
     rx

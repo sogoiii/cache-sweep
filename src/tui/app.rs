@@ -207,12 +207,15 @@ impl App {
     }
 
     pub fn visible_results(&self) -> Vec<(usize, &ResultItem)> {
-        self.filtered_indices
-            .iter()
-            .skip(self.scroll_offset)
-            .take(self.visible_height)
-            .filter_map(|&i| self.results.get(i).map(|item| (i, item)))
-            .collect()
+        let mut results = Vec::with_capacity(self.visible_height);
+        results.extend(
+            self.filtered_indices
+                .iter()
+                .skip(self.scroll_offset)
+                .take(self.visible_height)
+                .filter_map(|&i| self.results.get(i).map(|item| (i, item))),
+        );
+        results
     }
 
     pub fn current_item(&self) -> Option<&ResultItem> {

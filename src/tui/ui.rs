@@ -147,72 +147,74 @@ fn draw_results_panel(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(header, chunks[0]);
 
     // Results list
-    let items: Vec<ListItem> = app
-        .visible_results()
-        .iter()
-        .enumerate()
-        .map(|(display_idx, (_real_idx, item))| {
-            let is_cursor = display_idx + app.scroll_offset == app.cursor;
-            let path = item.scan_result.path.to_string_lossy();
+    let visible = app.visible_results();
+    let mut items: Vec<ListItem> = Vec::with_capacity(visible.len());
+    items.extend(
+        visible
+            .iter()
+            .enumerate()
+            .map(|(display_idx, (_real_idx, item))| {
+                let is_cursor = display_idx + app.scroll_offset == app.cursor;
+                let path = item.scan_result.path.to_string_lossy();
 
-            // Size display
-            let size_str = item.scan_result.size.map_or_else(
-                || format!("{:>width$}", "...", width = size_width),
-                |size| format!("{:>width$}", ByteSize::b(size), width = size_width),
-            );
+                // Size display
+                let size_str = item.scan_result.size.map_or_else(
+                    || format!("{:>width$}", "...", width = size_width),
+                    |size| format!("{:>width$}", ByteSize::b(size), width = size_width),
+                );
 
-            // Age display
-            let age_str = item.scan_result.modified.map_or_else(
-                || format!("{:>width$}", "?", width = age_width),
-                |time| {
-                    let age = SystemTime::now()
-                        .duration_since(time)
-                        .unwrap_or(Duration::ZERO);
-                    let days = age.as_secs() / 86400;
-                    format!("{:>width$}", format!("{days}d"), width = age_width)
-                },
-            );
+                // Age display
+                let age_str = item.scan_result.modified.map_or_else(
+                    || format!("{:>width$}", "?", width = age_width),
+                    |time| {
+                        let age = SystemTime::now()
+                            .duration_since(time)
+                            .unwrap_or(Duration::ZERO);
+                        let days = age.as_secs() / 86400;
+                        format!("{:>width$}", format!("{days}d"), width = age_width)
+                    },
+                );
 
-            // Status indicators
-            let status = if item.is_deleted {
-                "[DELETED] "
-            } else if item.is_deleting {
-                "[DELETING] "
-            } else if item.risk.is_sensitive {
-                "⚠️ "
-            } else {
-                ""
-            };
+                // Status indicators
+                let status = if item.is_deleted {
+                    "[DELETED] "
+                } else if item.is_deleting {
+                    "[DELETING] "
+                } else if item.risk.is_sensitive {
+                    "⚠️ "
+                } else {
+                    ""
+                };
 
-            let selection_marker = if item.is_selected { "[x] " } else { "[ ] " };
+                let selection_marker = if item.is_selected { "[x] " } else { "[ ] " };
 
-            // Build the path portion with status
-            let path_portion = if app.mode == Mode::MultiSelect {
-                format!("{selection_marker}{status}{path}")
-            } else {
-                format!("{status}{path}")
-            };
+                // Build the path portion with status
+                let path_portion = if app.mode == Mode::MultiSelect {
+                    format!("{selection_marker}{status}{path}")
+                } else {
+                    format!("{status}{path}")
+                };
 
-            let line_content = format!("{path_portion:<path_width$} {age_str} {size_str}");
+                let line_content = format!("{path_portion:<path_width$} {age_str} {size_str}");
 
-            let style = if item.is_deleted {
-                Style::default().fg(Color::DarkGray)
-            } else if is_cursor {
-                Style::default()
-                    .bg(Color::Blue)
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD)
-            } else if item.is_selected {
-                Style::default().fg(Color::LightBlue)
-            } else if item.risk.is_sensitive {
-                Style::default().fg(Color::Yellow)
-            } else {
-                Style::default()
-            };
+                let style = if item.is_deleted {
+                    Style::default().fg(Color::DarkGray)
+                } else if is_cursor {
+                    Style::default()
+                        .bg(Color::Blue)
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD)
+                } else if item.is_selected {
+                    Style::default().fg(Color::LightBlue)
+                } else if item.risk.is_sensitive {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
 
-            ListItem::new(Line::from(Span::styled(line_content, style)))
-        })
-        .collect();
+                ListItem::new(Line::from(Span::styled(line_content, style)))
+            }),
+    );
 
     let list = List::new(items).block(
         Block::default()
