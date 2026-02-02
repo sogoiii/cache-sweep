@@ -360,6 +360,7 @@ impl App {
         !self.results.is_empty() && self.sizes_calculated < self.results.len()
     }
 
+    #[allow(dead_code)] // Kept for potential future use
     #[allow(clippy::cast_precision_loss)] // Precision loss acceptable for progress display
     pub fn size_progress(&self) -> f64 {
         if self.results.is_empty() {
@@ -369,6 +370,7 @@ impl App {
         }
     }
 
+    #[allow(dead_code)] // Kept for potential future use
     pub fn spinner_char(&self) -> char {
         const SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
         SPINNER[self.spinner_tick % SPINNER.len()]

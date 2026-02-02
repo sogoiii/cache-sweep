@@ -5,16 +5,19 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Gauge, List, ListItem, Paragraph},
+    widgets::{Block, Borders, List, ListItem, Paragraph},
     Frame,
 };
 
 use super::app::{App, Mode, Panel};
 use super::panels;
+use super::widgets::DualProgressBar;
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let show_progress = app.scanning || app.is_calculating_sizes();
-    let header_height = if show_progress { 4 } else { 3 };
+    // Gradient bar needs: 1 (title border top) + 1 (title text) + 1 (bar) + 1 (labels) + 1 (border bottom) = 5
+    // Or when not showing progress: 3 (standard header with borders)
+    let header_height = if show_progress { 5 } else { 3 };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -54,10 +57,14 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect, show_progress: bool) {
     ]);
 
     if show_progress {
-        // Split header into title + progress bar
+        // Split header into: title (2 lines) + gradient bar (2 lines) + bottom border (1 line)
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(2), Constraint::Length(2)])
+            .constraints([
+                Constraint::Length(2), // Title with top/side borders
+                Constraint::Length(2), // Gradient bar + labels
+                Constraint::Length(1), // Bottom border
+            ])
             .split(area);
 
         // Title line
@@ -65,24 +72,31 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect, show_progress: bool) {
             .block(Block::default().borders(Borders::TOP | Borders::LEFT | Borders::RIGHT));
         frame.render_widget(header, chunks[0]);
 
-        // Progress line
-        let progress_label = if app.scanning {
-            format!(" {} Scanning... ", app.spinner_char())
-        } else {
-            format!(
-                " {} Calculating sizes {}/{} ",
-                app.spinner_char(),
-                app.sizes_calculated,
-                app.results.len()
-            )
+        // Gradient progress bar with labels
+        // Inner width accounting for side borders
+        let inner_area = Rect {
+            x: chunks[1].x + 1,
+            y: chunks[1].y,
+            width: chunks[1].width.saturating_sub(2),
+            height: chunks[1].height,
         };
 
-        let gauge = Gauge::default()
-            .block(Block::default().borders(Borders::BOTTOM | Borders::LEFT | Borders::RIGHT))
-            .gauge_style(Style::default().fg(Color::Green))
-            .ratio(app.size_progress())
-            .label(progress_label);
-        frame.render_widget(gauge, chunks[1]);
+        let dual_bar = DualProgressBar::new()
+            .scan_complete(!app.scanning)
+            .scan_count(app.results.len())
+            .size_progress(app.sizes_calculated, app.results.len())
+            .spinner_frame(app.spinner_tick);
+
+        frame.render_widget(dual_bar, inner_area);
+
+        // Side borders for bar area
+        let bar_border = Block::default().borders(Borders::LEFT | Borders::RIGHT);
+        frame.render_widget(bar_border, chunks[1]);
+
+        // Bottom border
+        let bottom_border =
+            Block::default().borders(Borders::BOTTOM | Borders::LEFT | Borders::RIGHT);
+        frame.render_widget(bottom_border, chunks[2]);
     } else {
         let header = Paragraph::new(title_line).block(Block::default().borders(Borders::ALL));
         frame.render_widget(header, area);

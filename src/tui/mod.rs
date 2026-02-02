@@ -5,6 +5,7 @@ mod event_loop;
 mod input;
 mod panels;
 mod ui;
+mod widgets;
 
 use anyhow::Result;
 use tokio_util::sync::CancellationToken;
