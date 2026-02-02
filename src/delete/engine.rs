@@ -55,3 +55,60 @@ pub async fn delete_directory(path: &Path, dry_run: bool) -> DeleteResult {
         error: Some(e.to_string()),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn test_dry_run_does_not_delete() {
+        let temp = tempdir().unwrap();
+        let target = temp.path().join("to_delete");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("file.txt"), "content").unwrap();
+
+        let result = delete_directory(&target, true).await;
+
+        assert!(result.success);
+        assert!(result.error.is_none());
+        assert!(target.exists(), "dry_run should not delete");
+    }
+
+    #[tokio::test]
+    async fn test_actual_deletion() {
+        let temp = tempdir().unwrap();
+        let target = temp.path().join("to_delete");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("file.txt"), "content").unwrap();
+
+        let result = delete_directory(&target, false).await;
+
+        assert!(result.success);
+        assert!(result.error.is_none());
+        assert!(!target.exists(), "should delete directory");
+    }
+
+    #[tokio::test]
+    async fn test_delete_nonexistent_returns_error() {
+        let result = delete_directory(Path::new("/nonexistent/path/xyz123"), false).await;
+
+        assert!(!result.success);
+        assert!(result.error.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_delete_nested_directory() {
+        let temp = tempdir().unwrap();
+        let target = temp.path().join("outer");
+        let inner = target.join("inner").join("deep");
+        fs::create_dir_all(&inner).unwrap();
+        fs::write(inner.join("file.txt"), "nested").unwrap();
+
+        let result = delete_directory(&target, false).await;
+
+        assert!(result.success);
+        assert!(!target.exists());
+    }
+}

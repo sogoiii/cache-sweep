@@ -47,13 +47,14 @@ pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
             let modification_time = result
                 .modified
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_millis() as u64);
+                .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
 
-            let mut deleted = None;
-            if args.delete_all {
+            let deleted = if args.delete_all {
                 let del_result = delete_directory(&result.path, args.dry_run).await;
-                deleted = Some(del_result.success);
-            }
+                Some(del_result.success)
+            } else {
+                None
+            };
 
             let stream_result = StreamResult {
                 path: result.path.to_string_lossy().to_string(),

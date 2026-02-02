@@ -30,9 +30,9 @@ pub enum SortOrder {
 impl SortOrder {
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
-            "path" => SortOrder::Path,
-            "age" => SortOrder::Age,
-            _ => SortOrder::Size,
+            "path" => Self::Path,
+            "age" => Self::Age,
+            _ => Self::Size,
         }
     }
 }
@@ -60,6 +60,7 @@ impl ResultItem {
     }
 }
 
+#[allow(clippy::struct_excessive_bools)] // TUI state naturally tracks multiple boolean flags
 pub struct App {
     pub results: Vec<ResultItem>,
     pub filtered_indices: Vec<usize>,
@@ -70,6 +71,7 @@ pub struct App {
     pub sort_order: SortOrder,
     pub search_query: String,
     pub needs_filter: bool,
+    pub needs_sort: bool,
     pub scanning: bool,
     pub total_size: u64,
     pub freed_size: u64,
@@ -94,6 +96,7 @@ impl App {
             sort_order,
             search_query: String::new(),
             needs_filter: false,
+            needs_sort: false,
             scanning: true,
             total_size: 0,
             freed_size: 0,
@@ -127,17 +130,22 @@ impl App {
         if let Some(item) = self.results.get_mut(index) {
             item.scan_result.size = Some(size);
             item.scan_result.file_count = Some(file_count);
-            self.total_size = self.results.iter().filter_map(|r| r.scan_result.size).sum();
+            self.total_size += size; // O(1) incremental update
             self.sizes_calculated += 1;
-            // Sort immediately so display stays current
-            self.sort_results();
-            self.apply_filter();
+            self.needs_sort = true; // Debounce: sort on tick instead of every update
         }
     }
 
     pub fn on_tick(&mut self) {
         self.spinner_tick = self.spinner_tick.wrapping_add(1);
         self.sort_flash = self.sort_flash.saturating_sub(1);
+
+        // Handle deferred sort (debounced from size updates)
+        if self.needs_sort {
+            self.sort_results();
+            self.apply_filter();
+            self.needs_sort = false;
+        }
 
         // Handle deferred filter (e.g., after deletion)
         if self.needs_filter {
@@ -218,13 +226,29 @@ impl App {
     }
 
     pub fn move_cursor(&mut self, delta: isize) {
-        let new_pos = (self.cursor as isize + delta)
-            .max(0)
-            .min(self.filtered_indices.len().saturating_sub(1) as isize)
-            as usize;
-        self.cursor = new_pos;
+        let max_pos = self.filtered_indices.len().saturating_sub(1);
+        self.cursor = if delta >= 0 {
+            #[allow(clippy::cast_sign_loss)] // Checked: delta >= 0
+            self.cursor.saturating_add(delta as usize).min(max_pos)
+        } else {
+            self.cursor.saturating_sub(delta.unsigned_abs())
+        };
+        self.adjust_scroll();
+    }
 
-        // Adjust scroll offset
+    /// Move cursor by a full page (up or down).
+    pub fn move_cursor_by_page(&mut self, down: bool) {
+        let max_pos = self.filtered_indices.len().saturating_sub(1);
+        self.cursor = if down {
+            self.cursor.saturating_add(self.visible_height).min(max_pos)
+        } else {
+            self.cursor.saturating_sub(self.visible_height)
+        };
+        self.adjust_scroll();
+    }
+
+    #[allow(clippy::missing_const_for_fn)] // &mut self methods can't be const
+    fn adjust_scroll(&mut self) {
         if self.cursor < self.scroll_offset {
             self.scroll_offset = self.cursor;
         } else if self.cursor + 2 >= self.scroll_offset + self.visible_height {
@@ -298,7 +322,7 @@ impl App {
         self.sort_flash = 5; // Brief yellow highlight (~500ms)
     }
 
-    pub fn sort_label(&self) -> &'static str {
+    pub const fn sort_label(&self) -> &'static str {
         match self.sort_order {
             SortOrder::Size => "SIZE",
             SortOrder::Path => "PATH",
@@ -306,10 +330,11 @@ impl App {
         }
     }
 
-    pub fn is_calculating_sizes(&self) -> bool {
+    pub const fn is_calculating_sizes(&self) -> bool {
         !self.results.is_empty() && self.sizes_calculated < self.results.len()
     }
 
+    #[allow(clippy::cast_precision_loss)] // Precision loss acceptable for progress display
     pub fn size_progress(&self) -> f64 {
         if self.results.is_empty() {
             0.0

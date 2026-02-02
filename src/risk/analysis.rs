@@ -47,7 +47,7 @@ pub fn analyze_risk(path: &Path) -> RiskAnalysis {
         if path_str.contains(*pattern) {
             return RiskAnalysis {
                 is_sensitive: true,
-                reason: Some(format!("Part of {} installation", app_name)),
+                reason: Some(format!("Part of {app_name} installation")),
             };
         }
     }
@@ -64,4 +64,115 @@ pub fn analyze_risk(path: &Path) -> RiskAnalysis {
     }
 
     RiskAnalysis::default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_system_path_applications() {
+        let path = PathBuf::from("/Applications/MyApp.app/node_modules");
+        let result = analyze_risk(&path);
+        assert!(result.is_sensitive);
+        assert!(result.reason.unwrap().contains("System"));
+    }
+
+    #[test]
+    fn test_system_path_library() {
+        let path = PathBuf::from("/Library/Something/node_modules");
+        let result = analyze_risk(&path);
+        assert!(result.is_sensitive);
+    }
+
+    #[test]
+    fn test_system_path_program_files() {
+        let path = PathBuf::from("C:/Program Files/App/node_modules");
+        let result = analyze_risk(&path);
+        assert!(result.is_sensitive);
+    }
+
+    #[test]
+    fn test_system_path_appdata() {
+        let path = PathBuf::from("C:/Users/User/AppData/Local/App/node_modules");
+        let result = analyze_risk(&path);
+        assert!(result.is_sensitive);
+    }
+
+    #[test]
+    fn test_vscode_app_pattern() {
+        let path = PathBuf::from("/usr/share/code.app/resources/node_modules");
+        let result = analyze_risk(&path);
+        assert!(result.is_sensitive);
+        assert!(result.reason.unwrap().contains("Visual Studio Code"));
+    }
+
+    #[test]
+    fn test_discord_pattern() {
+        let path = PathBuf::from("/home/user/.config/discord/node_modules");
+        let result = analyze_risk(&path);
+        assert!(result.is_sensitive);
+        // Should match discord pattern first (before .config)
+        assert!(result.reason.unwrap().contains("Discord"));
+    }
+
+    #[test]
+    fn test_slack_pattern() {
+        let path = PathBuf::from("/Applications/Slack.app/Contents/node_modules");
+        let result = analyze_risk(&path);
+        assert!(result.is_sensitive);
+    }
+
+    #[test]
+    fn test_obsidian_pattern() {
+        let path = PathBuf::from("/opt/obsidian/node_modules");
+        let result = analyze_risk(&path);
+        assert!(result.is_sensitive);
+        assert!(result.reason.unwrap().contains("Obsidian"));
+    }
+
+    #[test]
+    fn test_user_config_vscode() {
+        let path = PathBuf::from("/home/user/.vscode/extensions/node_modules");
+        let result = analyze_risk(&path);
+        assert!(result.is_sensitive);
+        assert!(result.reason.unwrap().contains("User configuration"));
+    }
+
+    #[test]
+    fn test_user_config_dotconfig() {
+        let path = PathBuf::from("/home/user/.config/some-app/node_modules");
+        let result = analyze_risk(&path);
+        assert!(result.is_sensitive);
+    }
+
+    #[test]
+    fn test_user_local_share() {
+        let path = PathBuf::from("/home/user/.local/share/app/node_modules");
+        let result = analyze_risk(&path);
+        assert!(result.is_sensitive);
+    }
+
+    #[test]
+    fn test_normal_project_path() {
+        let path = PathBuf::from("/home/user/projects/myapp/node_modules");
+        let result = analyze_risk(&path);
+        assert!(!result.is_sensitive);
+        assert!(result.reason.is_none());
+    }
+
+    #[test]
+    fn test_normal_workspace_path() {
+        let path = PathBuf::from("/Users/dev/workspace/frontend/node_modules");
+        let result = analyze_risk(&path);
+        assert!(!result.is_sensitive);
+    }
+
+    #[test]
+    fn test_case_insensitive_matching() {
+        let path = PathBuf::from("/APPLICATIONS/MyApp/node_modules");
+        let result = analyze_risk(&path);
+        assert!(result.is_sensitive);
+    }
 }

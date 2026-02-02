@@ -19,6 +19,7 @@ enum Command {
     DeleteBatch(Vec<usize>),
 }
 
+#[allow(clippy::too_many_lines)] // Event loop is inherently complex; splitting would obscure flow
 pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
     let (_guard, mut terminal) = TerminalCleanupGuard::new()?;
     let sort_order = SortOrder::from_str(&args.sort);
@@ -60,42 +61,45 @@ pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
 
             // Keyboard events (highest priority)
             maybe_event = event_stream.next() => {
-                if let Some(Ok(Event::Key(key))) = maybe_event {
-                    match handle_key(key, &mut app) {
-                        Action::Quit => break,
-                        Action::Delete => {
-                            if let Some(idx) = app.current_index() {
-                                if let Some(item) = app.results.get(idx) {
-                                    if !item.is_deleted && !item.is_deleting {
-                                        cmd_tx.send(Command::Delete(idx)).await.ok();
+                match maybe_event {
+                    Some(Ok(Event::Key(key))) => {
+                        match handle_key(key, &mut app) {
+                            Action::Quit => break,
+                            Action::Delete => {
+                                if let Some(idx) = app.current_index() {
+                                    if let Some(item) = app.results.get(idx) {
+                                        if !item.is_deleted && !item.is_deleting {
+                                            cmd_tx.send(Command::Delete(idx)).await.ok();
+                                        }
                                     }
                                 }
                             }
-                        }
-                        Action::DeleteSelected => {
-                            let indices: Vec<usize> = app.selected_indices.iter().copied().collect();
-                            if !indices.is_empty() {
-                                cmd_tx.send(Command::DeleteBatch(indices)).await.ok();
-                            }
-                        }
-                        Action::OpenInExplorer => {
-                            if let Some(idx) = app.current_index() {
-                                if let Some(item) = app.results.get(idx) {
-                                    let path = &item.scan_result.path;
-                                    #[cfg(target_os = "macos")]
-                                    let _ = std::process::Command::new("open").arg(path).spawn();
-                                    #[cfg(target_os = "linux")]
-                                    let _ = std::process::Command::new("xdg-open").arg(path).spawn();
-                                    #[cfg(target_os = "windows")]
-                                    let _ = std::process::Command::new("explorer").arg(path).spawn();
+                            Action::DeleteSelected => {
+                                let indices: Vec<usize> = app.selected_indices.iter().copied().collect();
+                                if !indices.is_empty() {
+                                    cmd_tx.send(Command::DeleteBatch(indices)).await.ok();
                                 }
                             }
+                            Action::OpenInExplorer => {
+                                if let Some(idx) = app.current_index() {
+                                    if let Some(item) = app.results.get(idx) {
+                                        let path = &item.scan_result.path;
+                                        #[cfg(target_os = "macos")]
+                                        let _ = std::process::Command::new("open").arg(path).spawn();
+                                        #[cfg(target_os = "linux")]
+                                        let _ = std::process::Command::new("xdg-open").arg(path).spawn();
+                                        #[cfg(target_os = "windows")]
+                                        let _ = std::process::Command::new("explorer").arg(path).spawn();
+                                    }
+                                }
+                            }
+                            Action::Continue => {}
                         }
-                        Action::Continue => {}
                     }
-                }
-                if let Some(Ok(Event::Resize(_, height))) = maybe_event {
-                    app.visible_height = height.saturating_sub(8) as usize;
+                    Some(Ok(Event::Resize(_, height))) => {
+                        app.visible_height = height.saturating_sub(8) as usize;
+                    }
+                    _ => {}
                 }
             }
 

@@ -18,144 +18,148 @@ const SIZE_MEDIUM: u64 = 600 * MB; // 100-600MB = yellow, >600MB = red
 const AGE_RECENT: u64 = 30; // <30 days = red
 const AGE_MEDIUM: u64 = 90; // 30-90 days = yellow, >90 days = green
 
+#[allow(clippy::too_many_lines)] // Info panel layout benefits from being in one place
 pub fn draw_info(frame: &mut Frame, app: &App, area: Rect) {
-    let content = if let Some(item) = app.current_item() {
-        let path = &item.scan_result.path;
-        let mut lines = Vec::new();
+    let content = app.current_item().map_or_else(
+        || vec![Line::from("No item selected")],
+        |item| {
+            let path = &item.scan_result.path;
+            let mut lines = Vec::new();
 
-        // Path with colored target folder
-        let (parent, target) = split_path(path);
-        lines.push(Line::from(vec![
-            Span::raw(parent),
-            Span::styled(
-                target,
-                Style::default()
-                    .fg(Color::Magenta)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]));
-        lines.push(Line::from(""));
-
-        // Type
-        let target_type = path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "unknown".to_string());
-        lines.push(Line::from(vec![
-            Span::styled("Type:      ", Style::default().fg(Color::DarkGray)),
-            Span::raw(target_type),
-        ]));
-
-        // Size with color and bar
-        if let Some(size) = item.scan_result.size {
-            let size_color = size_to_color(size);
-            let size_label = size_to_label(size);
-            let bar = size_bar(size, 10);
+            // Path with colored target folder
+            let (parent, target) = split_path(path);
             lines.push(Line::from(vec![
-                Span::styled("Size:      ", Style::default().fg(Color::DarkGray)),
+                Span::raw(parent),
                 Span::styled(
-                    format!("{:<10}", ByteSize::b(size)),
-                    Style::default().fg(size_color),
-                ),
-                Span::styled(bar, Style::default().fg(size_color)),
-                Span::styled(
-                    format!(" ({})", size_label),
-                    Style::default().fg(Color::DarkGray),
+                    target,
+                    Style::default()
+                        .fg(Color::Magenta)
+                        .add_modifier(Modifier::BOLD),
                 ),
             ]));
-        } else {
-            lines.push(Line::from(vec![
-                Span::styled("Size:      ", Style::default().fg(Color::DarkGray)),
-                Span::styled("calculating...", Style::default().fg(Color::DarkGray)),
-            ]));
-        }
+            lines.push(Line::from(""));
 
-        // Age with color
-        if let Some(time) = item.scan_result.modified {
-            let age = SystemTime::now()
-                .duration_since(time)
-                .unwrap_or(Duration::ZERO);
-            let days = age.as_secs() / 86400;
-            let age_color = age_to_color(days);
-            let age_label = age_to_label(days);
+            // Type
+            let target_type = path.file_name().map_or_else(
+                || "unknown".to_string(),
+                |n| n.to_string_lossy().to_string(),
+            );
             lines.push(Line::from(vec![
-                Span::styled("Age:       ", Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("{} days", days), Style::default().fg(age_color)),
-                Span::styled(
-                    format!(" ({})", age_label),
-                    Style::default().fg(Color::DarkGray),
-                ),
+                Span::styled("Type:      ", Style::default().fg(Color::DarkGray)),
+                Span::raw(target_type),
             ]));
-        } else {
-            lines.push(Line::from(vec![
-                Span::styled("Age:       ", Style::default().fg(Color::DarkGray)),
-                Span::raw("unknown"),
-            ]));
-        }
 
-        // File count
-        if let Some(count) = item.scan_result.file_count {
-            lines.push(Line::from(vec![
-                Span::styled("Files:     ", Style::default().fg(Color::DarkGray)),
-                Span::raw(format_file_count(count)),
-            ]));
-        }
-
-        // Disk usage %
-        if let Some(size) = item.scan_result.size {
-            if app.total_size > 0 {
-                let pct = (size as f64 / app.total_size as f64) * 100.0;
+            // Size with color and bar
+            if let Some(size) = item.scan_result.size {
+                let size_color = size_to_color(size);
+                let size_label = size_to_label(size);
+                let bar = size_bar(size, 10);
                 lines.push(Line::from(vec![
-                    Span::styled("Share:     ", Style::default().fg(Color::DarkGray)),
-                    Span::raw(format!("{:.1}% of scanned", pct)),
+                    Span::styled("Size:      ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        format!("{:<10}", ByteSize::b(size)),
+                        Style::default().fg(size_color),
+                    ),
+                    Span::styled(bar, Style::default().fg(size_color)),
+                    Span::styled(
+                        format!(" ({size_label})"),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ]));
+            } else {
+                lines.push(Line::from(vec![
+                    Span::styled("Size:      ", Style::default().fg(Color::DarkGray)),
+                    Span::styled("calculating...", Style::default().fg(Color::DarkGray)),
                 ]));
             }
-        }
 
-        // Project name
-        if let Some(project) = find_project_name(path) {
-            lines.push(Line::from(vec![
-                Span::styled("Project:   ", Style::default().fg(Color::DarkGray)),
-                Span::raw(project),
-            ]));
-        }
+            // Age with color
+            if let Some(time) = item.scan_result.modified {
+                let age = SystemTime::now()
+                    .duration_since(time)
+                    .unwrap_or(Duration::ZERO);
+                let days = age.as_secs() / 86400;
+                let age_color = age_to_color(days);
+                let age_label = age_to_label(days);
+                lines.push(Line::from(vec![
+                    Span::styled("Age:       ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(format!("{days} days"), Style::default().fg(age_color)),
+                    Span::styled(
+                        format!(" ({age_label})"),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ]));
+            } else {
+                lines.push(Line::from(vec![
+                    Span::styled("Age:       ", Style::default().fg(Color::DarkGray)),
+                    Span::raw("unknown"),
+                ]));
+            }
 
-        // Sensitive warning
-        if item.risk.is_sensitive {
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                "⚠️ SENSITIVE DIRECTORY",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            )));
-            if let Some(ref reason) = item.risk.reason {
+            // File count
+            if let Some(count) = item.scan_result.file_count {
+                lines.push(Line::from(vec![
+                    Span::styled("Files:     ", Style::default().fg(Color::DarkGray)),
+                    Span::raw(format_file_count(count)),
+                ]));
+            }
+
+            // Disk usage %
+            if let Some(size) = item.scan_result.size {
+                if app.total_size > 0 {
+                    #[allow(clippy::cast_precision_loss)]
+                    // Precision loss acceptable for percentage display
+                    let pct = (size as f64 / app.total_size as f64) * 100.0;
+                    lines.push(Line::from(vec![
+                        Span::styled("Share:     ", Style::default().fg(Color::DarkGray)),
+                        Span::raw(format!("{pct:.1}% of scanned")),
+                    ]));
+                }
+            }
+
+            // Project name
+            if let Some(project) = find_project_name(path) {
+                lines.push(Line::from(vec![
+                    Span::styled("Project:   ", Style::default().fg(Color::DarkGray)),
+                    Span::raw(project),
+                ]));
+            }
+
+            // Sensitive warning
+            if item.risk.is_sensitive {
+                lines.push(Line::from(""));
                 lines.push(Line::from(Span::styled(
-                    reason.clone(),
-                    Style::default().fg(Color::Yellow),
+                    "⚠️ SENSITIVE DIRECTORY",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )));
+                if let Some(ref reason) = item.risk.reason {
+                    lines.push(Line::from(Span::styled(
+                        reason.clone(),
+                        Style::default().fg(Color::Yellow),
+                    )));
+                }
+                lines.push(Line::from(Span::styled(
+                    "Deleting this may break applications!",
+                    Style::default().fg(Color::Red),
                 )));
             }
-            lines.push(Line::from(Span::styled(
-                "Deleting this may break applications!",
-                Style::default().fg(Color::Red),
-            )));
-        }
 
-        // Deleted status
-        if item.is_deleted {
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                "✓ DELETED",
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            )));
-        }
+            // Deleted status
+            if item.is_deleted {
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    "✓ DELETED",
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                )));
+            }
 
-        lines
-    } else {
-        vec![Line::from("No item selected")]
-    };
+            lines
+        },
+    );
 
     let info = Paragraph::new(content).wrap(Wrap { trim: true }).block(
         Block::default()
@@ -169,16 +173,17 @@ pub fn draw_info(frame: &mut Frame, app: &App, area: Rect) {
 
 fn split_path(path: &Path) -> (String, String) {
     let full = path.to_string_lossy();
-    if let Some(name) = path.file_name() {
-        let name_str = name.to_string_lossy();
-        let parent = full.strip_suffix(&*name_str).unwrap_or(&full);
-        (parent.to_string(), name_str.to_string())
-    } else {
-        (full.to_string(), String::new())
-    }
+    path.file_name().map_or_else(
+        || (full.to_string(), String::new()),
+        |name| {
+            let name_str = name.to_string_lossy();
+            let parent = full.strip_suffix(&*name_str).unwrap_or(&full);
+            (parent.to_string(), name_str.to_string())
+        },
+    )
 }
 
-fn size_to_color(size: u64) -> Color {
+const fn size_to_color(size: u64) -> Color {
     if size <= SIZE_SMALL {
         Color::Green
     } else if size <= SIZE_MEDIUM {
@@ -188,7 +193,7 @@ fn size_to_color(size: u64) -> Color {
     }
 }
 
-fn size_to_label(size: u64) -> &'static str {
+const fn size_to_label(size: u64) -> &'static str {
     if size <= SIZE_SMALL {
         "small"
     } else if size <= SIZE_MEDIUM {
@@ -198,6 +203,11 @@ fn size_to_label(size: u64) -> &'static str {
     }
 }
 
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 fn size_bar(size: u64, width: usize) -> String {
     // Cap at 1GB for bar calculation
     let max_size = 1024 * MB;
@@ -207,7 +217,7 @@ fn size_bar(size: u64, width: usize) -> String {
     format!(" {}{}", "█".repeat(filled), "░".repeat(empty))
 }
 
-fn age_to_color(days: u64) -> Color {
+const fn age_to_color(days: u64) -> Color {
     if days < AGE_RECENT {
         Color::Red // Recent = risky to delete
     } else if days < AGE_MEDIUM {
@@ -217,7 +227,7 @@ fn age_to_color(days: u64) -> Color {
     }
 }
 
-fn age_to_label(days: u64) -> &'static str {
+const fn age_to_label(days: u64) -> &'static str {
     if days < AGE_RECENT {
         "recent"
     } else if days < AGE_MEDIUM {
@@ -227,13 +237,14 @@ fn age_to_label(days: u64) -> &'static str {
     }
 }
 
+#[allow(clippy::cast_precision_loss)] // Precision loss acceptable for human-readable display
 fn format_file_count(count: u64) -> String {
     if count >= 1_000_000 {
         format!("{:.1}M files", count as f64 / 1_000_000.0)
     } else if count >= 1_000 {
         format!("{:.1}K files", count as f64 / 1_000.0)
     } else {
-        format!("{} files", count)
+        format!("{count} files")
     }
 }
 
@@ -277,15 +288,14 @@ fn find_project_name(target_path: &Path) -> Option<String> {
 
 fn extract_json_field(content: &str, field: &str) -> Option<String> {
     // Simple extraction without full JSON parsing
-    let pattern = format!("\"{}\"", field);
+    let pattern = format!("\"{field}\"");
     let idx = content.find(&pattern)?;
     let rest = &content[idx + pattern.len()..];
     let colon = rest.find(':')?;
     let after_colon = rest[colon + 1..].trim_start();
-    if after_colon.starts_with('"') {
-        let value_start = 1;
-        let value_end = after_colon[1..].find('"')?;
-        return Some(after_colon[value_start..value_start + value_end].to_string());
+    if let Some(stripped) = after_colon.strip_prefix('"') {
+        let value_end = stripped.find('"')?;
+        return Some(stripped[..value_end].to_string());
     }
     None
 }

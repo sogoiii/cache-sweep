@@ -4,7 +4,7 @@ use tokio::sync::Semaphore;
 
 static SIZE_SEMAPHORE: Semaphore = Semaphore::const_new(10);
 
-/// Returns (total_size, file_count)
+/// Returns `(total_size, file_count)`.
 pub async fn calculate_size(path: &Path) -> (u64, u64) {
     let _permit = SIZE_SEMAPHORE.acquire().await.ok();
     let path = path.to_path_buf();
@@ -14,16 +14,15 @@ pub async fn calculate_size(path: &Path) -> (u64, u64) {
         .unwrap_or((0, 0))
 }
 
-/// Returns (total_size, file_count)
+/// Returns `(total_size, file_count)`.
 fn calculate_dir_size(path: &Path) -> (u64, u64) {
     let mut total_size = 0u64;
     let mut file_count = 0u64;
 
     if let Ok(entries) = std::fs::read_dir(path) {
         for entry in entries.flatten() {
-            let metadata = match entry.metadata() {
-                Ok(m) => m,
-                Err(_) => continue,
+            let Ok(metadata) = entry.metadata() else {
+                continue;
             };
 
             if metadata.is_file() {
@@ -41,6 +40,7 @@ fn calculate_dir_size(path: &Path) -> (u64, u64) {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use std::fs::{self, File};

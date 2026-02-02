@@ -35,11 +35,11 @@ fn handle_normal_key(key: KeyEvent, app: &mut App) -> Action {
             Action::Continue
         }
         KeyCode::PageUp | KeyCode::Char('u') => {
-            app.move_cursor(-(app.visible_height as isize));
+            app.move_cursor_by_page(false);
             Action::Continue
         }
         KeyCode::PageDown | KeyCode::Char('d') => {
-            app.move_cursor(app.visible_height as isize);
+            app.move_cursor_by_page(true);
             Action::Continue
         }
         KeyCode::Home => {
@@ -61,19 +61,17 @@ fn handle_normal_key(key: KeyEvent, app: &mut App) -> Action {
         // Panel navigation
         KeyCode::Left | KeyCode::Char('h') => {
             app.panel = match app.panel {
-                Panel::Results => Panel::Options,
                 Panel::Info => Panel::Results,
                 Panel::Options => Panel::Help,
-                Panel::Help => Panel::Options,
+                Panel::Results | Panel::Help => Panel::Options,
             };
             Action::Continue
         }
         KeyCode::Right | KeyCode::Char('l') => {
             app.panel = match app.panel {
                 Panel::Results => Panel::Info,
-                Panel::Info => Panel::Results,
-                Panel::Options => Panel::Results,
                 Panel::Help => Panel::Options,
+                Panel::Info | Panel::Options => Panel::Results,
             };
             Action::Continue
         }
@@ -157,11 +155,11 @@ fn handle_multi_select_key(key: KeyEvent, app: &mut App) -> Action {
             Action::Continue
         }
         KeyCode::PageUp | KeyCode::Char('u') => {
-            app.move_cursor(-(app.visible_height as isize));
+            app.move_cursor_by_page(false);
             Action::Continue
         }
         KeyCode::PageDown | KeyCode::Char('d') => {
-            app.move_cursor(app.visible_height as isize);
+            app.move_cursor_by_page(true);
             Action::Continue
         }
 
@@ -179,10 +177,10 @@ fn handle_multi_select_key(key: KeyEvent, app: &mut App) -> Action {
             Action::Continue
         }
         KeyCode::Enter => {
-            if !app.selected_indices.is_empty() {
-                Action::DeleteSelected
-            } else {
+            if app.selected_indices.is_empty() {
                 Action::Continue
+            } else {
+                Action::DeleteSelected
             }
         }
 

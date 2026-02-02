@@ -98,6 +98,7 @@ fn draw_main(frame: &mut Frame, app: &App, area: Rect) {
     }
 }
 
+#[allow(clippy::too_many_lines)] // UI rendering benefits from being in one place
 fn draw_results_panel(frame: &mut Frame, app: &App, area: Rect) {
     // Split area: header row + list
     let chunks = Layout::default()
@@ -155,22 +156,22 @@ fn draw_results_panel(frame: &mut Frame, app: &App, area: Rect) {
             let path = item.scan_result.path.to_string_lossy();
 
             // Size display
-            let size_str = match item.scan_result.size {
-                Some(size) => format!("{:>width$}", ByteSize::b(size), width = size_width),
-                None => format!("{:>width$}", "...", width = size_width),
-            };
+            let size_str = item.scan_result.size.map_or_else(
+                || format!("{:>width$}", "...", width = size_width),
+                |size| format!("{:>width$}", ByteSize::b(size), width = size_width),
+            );
 
             // Age display
-            let age_str = match item.scan_result.modified {
-                Some(time) => {
+            let age_str = item.scan_result.modified.map_or_else(
+                || format!("{:>width$}", "?", width = age_width),
+                |time| {
                     let age = SystemTime::now()
                         .duration_since(time)
                         .unwrap_or(Duration::ZERO);
                     let days = age.as_secs() / 86400;
-                    format!("{:>width$}", format!("{}d", days), width = age_width)
-                }
-                None => format!("{:>width$}", "?", width = age_width),
-            };
+                    format!("{:>width$}", format!("{days}d"), width = age_width)
+                },
+            );
 
             // Status indicators
             let status = if item.is_deleted {
@@ -187,18 +188,12 @@ fn draw_results_panel(frame: &mut Frame, app: &App, area: Rect) {
 
             // Build the path portion with status
             let path_portion = if app.mode == Mode::MultiSelect {
-                format!("{}{}{}", selection_marker, status, path)
+                format!("{selection_marker}{status}{path}")
             } else {
-                format!("{}{}", status, path)
+                format!("{status}{path}")
             };
 
-            let line_content = format!(
-                "{:<path_width$} {} {}",
-                path_portion,
-                age_str,
-                size_str,
-                path_width = path_width
-            );
+            let line_content = format!("{path_portion:<path_width$} {age_str} {size_str}");
 
             let style = if item.is_deleted {
                 Style::default().fg(Color::DarkGray)
