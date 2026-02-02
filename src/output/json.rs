@@ -70,7 +70,7 @@ pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
                 continue;
             }
 
-            let size = calculate_size(&result.path).await;
+            let (size, _file_count) = calculate_size(&result.path).await;
             let modification_time = result
                 .modified
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())

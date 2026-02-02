@@ -42,7 +42,13 @@ pub static PROFILES: LazyLock<HashMap<&'static str, Profile>> = LazyLock::new(||
         Profile {
             name: "python",
             description: "Python caches and virtual environments",
-            targets: &["__pycache__", ".pytest_cache", ".mypy_cache", ".venv", "venv"],
+            targets: &[
+                "__pycache__",
+                ".pytest_cache",
+                ".mypy_cache",
+                ".venv",
+                "venv",
+            ],
         },
     );
 

@@ -80,7 +80,10 @@ fn test_json_finds_target() {
     let json: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON");
     let results = json["results"].as_array().unwrap();
     assert_eq!(results.len(), 1);
-    assert!(results[0]["path"].as_str().unwrap().contains("node_modules"));
+    assert!(results[0]["path"]
+        .as_str()
+        .unwrap()
+        .contains("node_modules"));
 }
 
 #[test]

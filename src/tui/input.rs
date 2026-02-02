@@ -8,6 +8,7 @@ pub enum Action {
     Quit,
     Delete,
     DeleteSelected,
+    OpenInExplorer,
 }
 
 pub fn handle_key(key: KeyEvent, app: &mut App) -> Action {
@@ -76,18 +77,18 @@ fn handle_normal_key(key: KeyEvent, app: &mut App) -> Action {
             Action::Continue
         }
 
-        // Actions
-        KeyCode::Char(' ') | KeyCode::Delete => Action::Delete,
-        KeyCode::Char('/') => {
+        // Actions (disabled on Info panel)
+        KeyCode::Char(' ') | KeyCode::Delete if app.panel != Panel::Info => Action::Delete,
+        KeyCode::Char('/') if app.panel != Panel::Info => {
             app.mode = Mode::Search;
             app.search_query.clear();
             Action::Continue
         }
-        KeyCode::Char('t') => {
+        KeyCode::Char('t') if app.panel != Panel::Info => {
             app.mode = Mode::MultiSelect;
             Action::Continue
         }
-        KeyCode::Char('s') => {
+        KeyCode::Char('s') if app.panel != Panel::Info => {
             app.sort_order = match app.sort_order {
                 SortOrder::Size => SortOrder::Path,
                 SortOrder::Path => SortOrder::Age,
@@ -96,6 +97,10 @@ fn handle_normal_key(key: KeyEvent, app: &mut App) -> Action {
             app.apply_sort_and_filter();
             Action::Continue
         }
+
+        // Open in file explorer (Info panel only)
+        KeyCode::Char('o') if app.panel == Panel::Info => Action::OpenInExplorer,
+
         KeyCode::Char('e') => {
             // Toggle error display (handled in UI)
             Action::Continue

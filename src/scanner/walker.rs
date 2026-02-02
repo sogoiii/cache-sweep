@@ -12,6 +12,7 @@ use super::batcher::ResultBatcher;
 pub struct ScanResult {
     pub path: PathBuf,
     pub size: Option<u64>,
+    pub file_count: Option<u64>,
     pub modified: Option<SystemTime>,
     pub is_sensitive: bool,
 }
@@ -25,6 +26,7 @@ impl ScanResult {
         Self {
             path,
             size: None,
+            file_count: None,
             modified,
             is_sensitive: false,
         }

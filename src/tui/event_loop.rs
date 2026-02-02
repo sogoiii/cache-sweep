@@ -43,8 +43,8 @@ pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
     // Command channel for deletions
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<Command>(10);
 
-    // Size calculation queue
-    let (size_tx, mut size_rx) = mpsc::unbounded_channel::<(usize, u64)>();
+    // Size calculation queue: (index, size, file_count)
+    let (size_tx, mut size_rx) = mpsc::unbounded_channel::<(usize, u64, u64)>();
 
     let mut event_stream = EventStream::new();
     let mut tick = tokio::time::interval(Duration::from_millis(100));
@@ -78,6 +78,19 @@ pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
                                 cmd_tx.send(Command::DeleteBatch(indices)).await.ok();
                             }
                         }
+                        Action::OpenInExplorer => {
+                            if let Some(idx) = app.current_index() {
+                                if let Some(item) = app.results.get(idx) {
+                                    let path = &item.scan_result.path;
+                                    #[cfg(target_os = "macos")]
+                                    let _ = std::process::Command::new("open").arg(path).spawn();
+                                    #[cfg(target_os = "linux")]
+                                    let _ = std::process::Command::new("xdg-open").arg(path).spawn();
+                                    #[cfg(target_os = "windows")]
+                                    let _ = std::process::Command::new("explorer").arg(path).spawn();
+                                }
+                            }
+                        }
                         Action::Continue => {}
                     }
                 }
@@ -87,8 +100,8 @@ pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
             }
 
             // Size updates
-            Some((idx, size)) = size_rx.recv() => {
-                app.update_size(idx, size);
+            Some((idx, size, file_count)) = size_rx.recv() => {
+                app.update_size(idx, size, file_count);
             }
 
             // Deletion commands
@@ -140,8 +153,8 @@ pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
                             let path = app.results[idx].scan_result.path.clone();
                             let tx = size_tx.clone();
                             tokio::spawn(async move {
-                                let size = calculate_size(&path).await;
-                                tx.send((idx, size)).ok();
+                                let (size, file_count) = calculate_size(&path).await;
+                                tx.send((idx, size, file_count)).ok();
                             });
                         }
 
@@ -154,8 +167,8 @@ pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
                                 let path = app.results[idx].scan_result.path.clone();
                                 let tx = size_tx.clone();
                                 tokio::spawn(async move {
-                                    let size = calculate_size(&path).await;
-                                    tx.send((idx, size)).ok();
+                                    let (size, file_count) = calculate_size(&path).await;
+                                    tx.send((idx, size, file_count)).ok();
                                 });
                             }
                         }

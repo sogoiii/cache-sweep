@@ -40,7 +40,9 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect, show_progress: bool) {
         ByteSize::b(app.freed_size),
     );
 
-    let base_style = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+    let base_style = Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD);
     let sort_style = Style::default()
         .fg(Color::Yellow)
         .add_modifier(Modifier::BOLD);
@@ -65,10 +67,7 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect, show_progress: bool) {
 
         // Progress line
         let progress_label = if app.scanning {
-            format!(
-                " {} Scanning... ",
-                app.spinner_char()
-            )
+            format!(" {} Scanning... ", app.spinner_char())
         } else {
             format!(
                 " {} Calculating sizes {}/{} ",
@@ -85,8 +84,7 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect, show_progress: bool) {
             .label(progress_label);
         frame.render_widget(gauge, chunks[1]);
     } else {
-        let header = Paragraph::new(title_line)
-            .block(Block::default().borders(Borders::ALL));
+        let header = Paragraph::new(title_line).block(Block::default().borders(Borders::ALL));
         frame.render_widget(header, area);
     }
 }
@@ -118,7 +116,7 @@ fn draw_results_panel(frame: &mut Frame, app: &App, area: Rect) {
 
     // Calculate column positions based on area width
     let inner_width = area.width.saturating_sub(2) as usize; // -2 for borders
-    let age_width = 8;   // "Last_mod" column
+    let age_width = 8; // "Last_mod" column
     let size_width = 12; // "Size" column
     let path_width = inner_width.saturating_sub(age_width + size_width + 2);
 
@@ -133,9 +131,12 @@ fn draw_results_panel(frame: &mut Frame, app: &App, area: Rect) {
         size_width = size_width
     );
 
-    let header = Paragraph::new(Line::from(vec![
-        Span::styled(header_line, Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
-    ]))
+    let header = Paragraph::new(Line::from(vec![Span::styled(
+        header_line,
+        Style::default()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::BOLD),
+    )]))
     .block(
         Block::default()
             .title(title)
@@ -229,9 +230,10 @@ fn draw_results_panel(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
     let help_text = match app.mode {
-        Mode::Normal => {
-            "↑/↓:navigate | SPACE:delete | /:search | t:multi-select | s:sort | q:quit"
-        }
+        Mode::Normal => match app.panel {
+            Panel::Info => "↑/↓:navigate | ←:back | o:open | q:quit",
+            _ => "↑/↓:navigate | SPACE:delete | /:search | t:multi-select | s:sort | q:quit",
+        },
         Mode::Search => "Type to filter | Enter:confirm | Esc:cancel",
         Mode::MultiSelect => "SPACE:toggle | a:all | Enter:delete selected | t/Esc:exit",
     };

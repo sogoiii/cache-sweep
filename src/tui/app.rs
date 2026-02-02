@@ -123,9 +123,10 @@ impl App {
         self.apply_filter();
     }
 
-    pub fn update_size(&mut self, index: usize, size: u64) {
+    pub fn update_size(&mut self, index: usize, size: u64, file_count: u64) {
         if let Some(item) = self.results.get_mut(index) {
             item.scan_result.size = Some(size);
+            item.scan_result.file_count = Some(file_count);
             self.total_size = self.results.iter().filter_map(|r| r.scan_result.size).sum();
             self.sizes_calculated += 1;
             // Sort immediately so display stays current
@@ -161,14 +162,8 @@ impl App {
             }
             SortOrder::Age => {
                 self.results.sort_by(|a, b| {
-                    let a_time = a
-                        .scan_result
-                        .modified
-                        .unwrap_or(SystemTime::UNIX_EPOCH);
-                    let b_time = b
-                        .scan_result
-                        .modified
-                        .unwrap_or(SystemTime::UNIX_EPOCH);
+                    let a_time = a.scan_result.modified.unwrap_or(SystemTime::UNIX_EPOCH);
+                    let b_time = b.scan_result.modified.unwrap_or(SystemTime::UNIX_EPOCH);
                     a_time.cmp(&b_time)
                 });
             }
@@ -225,7 +220,8 @@ impl App {
     pub fn move_cursor(&mut self, delta: isize) {
         let new_pos = (self.cursor as isize + delta)
             .max(0)
-            .min(self.filtered_indices.len().saturating_sub(1) as isize) as usize;
+            .min(self.filtered_indices.len().saturating_sub(1) as isize)
+            as usize;
         self.cursor = new_pos;
 
         // Adjust scroll offset
