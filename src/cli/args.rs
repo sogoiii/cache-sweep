@@ -79,7 +79,7 @@ impl Args {
                 let profile_names = self
                     .profiles
                     .clone()
-                    .unwrap_or_else(|| vec!["node".to_string()]);
+                    .unwrap_or_else(|| vec!["all".to_string()]);
                 crate::profiles::get_targets_for_profiles(&profile_names)
             },
             Clone::clone,
@@ -141,10 +141,13 @@ mod tests {
     }
 
     #[test]
-    fn test_effective_targets_default_node_profile() {
+    fn test_effective_targets_default_all_profiles() {
         let args = default_args();
         let targets = args.effective_targets();
+        // Default is "all" - should include targets from multiple profiles
         assert!(targets.contains(&"node_modules".to_string()));
+        assert!(targets.contains(&"__pycache__".to_string()));
+        assert!(targets.contains(&"target".to_string()));
     }
 
     #[test]
