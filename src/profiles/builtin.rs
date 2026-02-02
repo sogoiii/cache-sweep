@@ -31,7 +31,6 @@ pub static PROFILES: LazyLock<HashMap<&'static str, Profile>> = LazyLock::new(||
                 ".eslintcache",
                 ".cache",
                 ".jest",
-                "coverage",
                 "deno_cache",
             ],
         },
