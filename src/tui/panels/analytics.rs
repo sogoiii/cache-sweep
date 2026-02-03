@@ -257,14 +257,14 @@ mod tests {
 
     #[test]
     fn test_content_line_count_empty() {
-        let app = App::new(false, SortOrder::Size);
+        let app = App::new(false, SortOrder::Size, false);
         // 4 + (0+4) + (6+4) + (0+4) + (5+4) + 2 = 33
         assert_eq!(content_line_count(&app), 33);
     }
 
     #[test]
     fn test_content_line_count_with_data() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
 
         // Add 3 different targets (2 profiles: node, python)
         app.analytics

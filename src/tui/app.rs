@@ -112,10 +112,12 @@ pub struct App {
     pub visible_group_count: usize, // how many groups fit (set by UI)
     // For multi-select sensitive blocking
     pub sensitive_blocked_count: usize, // count of sensitive items in selection (for modal display)
+    // Dry run mode - deletions are simulated, items stay visible
+    pub dry_run: bool,
 }
 
 impl App {
-    pub fn new(show_protected: bool, sort_order: SortOrder) -> Self {
+    pub fn new(show_protected: bool, sort_order: SortOrder, dry_run: bool) -> Self {
         Self {
             results: Vec::new(),
             filtered_indices: Vec::new(),
@@ -144,6 +146,7 @@ impl App {
             tab_scroll_offset: 0,   // first visible group in scrollable area
             visible_group_count: 5, // default, updated by UI on render
             sensitive_blocked_count: 0,
+            dry_run,
         }
     }
 
@@ -217,10 +220,6 @@ impl App {
         let mut groups: HashMap<String, TargetGroup> = HashMap::new();
 
         for (idx, item) in self.results.iter().enumerate() {
-            if item.is_deleted {
-                continue;
-            }
-
             let target_name = extract_target_name(&item.scan_result.path);
             let size = item.scan_result.size.unwrap_or(0);
 
@@ -258,11 +257,10 @@ impl App {
 
         // Step 1: Get base indices from active tab
         // Tab layout: 0 = "All", 1..=len = specific groups
+        // Deleted items stay visible (dimmed) so user can see what was deleted
         let base_indices: Vec<usize> = if self.active_tab == 0 || self.target_groups.is_empty() {
-            // "All" tab - use all non-deleted indices
-            (0..self.results.len())
-                .filter(|&i| !self.results[i].is_deleted)
-                .collect()
+            // "All" tab - include all items (deleted items shown dimmed)
+            (0..self.results.len()).collect()
         } else {
             // Specific target tab (index 1 = first group, etc.)
             self.target_groups[self.active_tab - 1].indices.clone()
@@ -548,7 +546,7 @@ mod tests {
 
     // Helper to create an App with N items for cursor tests
     fn app_with_items(item_count: usize, visible_height: usize) -> App {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
         app.visible_height = visible_height;
         app.filtered_indices = (0..item_count).collect();
         app
@@ -771,7 +769,7 @@ mod tests {
 
     #[test]
     fn test_results_order_stable_after_add() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
 
         // Add results with different sizes
         app.add_results(vec![
@@ -788,7 +786,7 @@ mod tests {
 
     #[test]
     fn test_filtered_indices_sorted_not_results() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
 
         app.add_results(vec![
             make_scan_result("/small", Some(100)),
@@ -807,7 +805,7 @@ mod tests {
 
     #[test]
     fn test_update_size_uses_stable_index() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
 
         // Add results - index 0=/a, index 1=/b, index 2=/c
         app.add_results(vec![
@@ -826,7 +824,7 @@ mod tests {
 
     #[test]
     fn test_update_size_correct_after_multiple_sorts() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
 
         app.add_results(vec![
             make_scan_result("/first", Some(100)),
@@ -850,7 +848,7 @@ mod tests {
 
     #[test]
     fn test_visible_results_uses_filtered_order() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
         app.visible_height = 10;
 
         app.add_results(vec![
@@ -876,7 +874,7 @@ mod tests {
 
     #[test]
     fn test_target_groups_created_from_results() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
 
         app.add_results(vec![
             make_scan_result("/projects/a/node_modules", Some(100)),
@@ -890,7 +888,7 @@ mod tests {
 
     #[test]
     fn test_target_groups_sorted_by_size_descending() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
 
         app.add_results(vec![
             make_scan_result("/a/node_modules", Some(100)),
@@ -910,7 +908,7 @@ mod tests {
 
     #[test]
     fn test_next_tab_wraps_around() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
 
         app.add_results(vec![
             make_scan_result("/a/node_modules", Some(100)),
@@ -933,7 +931,7 @@ mod tests {
 
     #[test]
     fn test_prev_tab_wraps_around() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
 
         app.add_results(vec![
             make_scan_result("/a/node_modules", Some(100)),
@@ -956,7 +954,7 @@ mod tests {
 
     #[test]
     fn test_tab_filters_to_target_type() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
 
         app.add_results(vec![
             make_scan_result("/a/node_modules", Some(100)),
@@ -981,7 +979,7 @@ mod tests {
 
     #[test]
     fn test_active_tab_subtotal_all() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
 
         app.add_results(vec![
             make_scan_result("/a/node_modules", None),
@@ -1000,7 +998,7 @@ mod tests {
 
     #[test]
     fn test_active_tab_subtotal_specific_group() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
 
         app.add_results(vec![
             make_scan_result("/a/node_modules", Some(100)),
@@ -1019,7 +1017,7 @@ mod tests {
 
     #[test]
     fn test_tab_resets_cursor_on_switch() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
         app.visible_height = 10;
 
         app.add_results(vec![
@@ -1039,8 +1037,8 @@ mod tests {
     }
 
     #[test]
-    fn test_deleted_items_excluded_from_groups() {
-        let mut app = App::new(false, SortOrder::Size);
+    fn test_deleted_items_stay_visible_in_groups() {
+        let mut app = App::new(false, SortOrder::Size, false);
 
         app.add_results(vec![
             make_scan_result("/a/node_modules", Some(100)),
@@ -1056,14 +1054,17 @@ mod tests {
         app.mark_deleted(0, 100);
         app.on_tick(); // Triggers rebuild
 
-        // Group should now have 1 item
-        assert_eq!(app.target_groups[0].count, 1);
-        assert_eq!(app.target_groups[0].total_size, 200);
+        // Group still has 2 items (deleted items stay visible)
+        assert_eq!(app.target_groups[0].count, 2);
+        assert_eq!(app.target_groups[0].total_size, 300);
+
+        // But the item is marked as deleted
+        assert!(app.results[0].is_deleted);
     }
 
     #[test]
     fn test_tab_scroll_offset_adjusts_for_selection() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
         app.visible_group_count = 2; // Only 2 groups visible at a time
 
         // Create 5 different target types
@@ -1102,7 +1103,7 @@ mod tests {
     #[test]
     fn test_show_protected_false_hides_sensitive() {
         // show_protected=false means hide sensitive items
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
 
         // Add a protected system path (will be detected as sensitive)
         app.add_results(vec![ScanResult {
@@ -1120,7 +1121,7 @@ mod tests {
     #[test]
     fn test_show_protected_true_shows_sensitive() {
         // show_protected=true means show sensitive items
-        let mut app = App::new(true, SortOrder::Size);
+        let mut app = App::new(true, SortOrder::Size, false);
 
         // Add a protected system path
         app.add_results(vec![ScanResult {
@@ -1138,7 +1139,7 @@ mod tests {
 
     #[test]
     fn test_show_protected_false_allows_normal_paths() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
 
         // Add a normal project path
         app.add_results(vec![ScanResult {
@@ -1158,13 +1159,13 @@ mod tests {
 
     #[test]
     fn test_count_sensitive_in_selection_empty() {
-        let app = App::new(true, SortOrder::Size);
+        let app = App::new(true, SortOrder::Size, false);
         assert_eq!(app.count_sensitive_in_selection(), 0);
     }
 
     #[test]
     fn test_count_sensitive_in_selection_with_sensitive() {
-        let mut app = App::new(true, SortOrder::Size);
+        let mut app = App::new(true, SortOrder::Size, false);
 
         // Add mixed results
         app.add_results(vec![
@@ -1200,7 +1201,7 @@ mod tests {
 
     #[test]
     fn test_count_sensitive_in_selection_none_sensitive() {
-        let mut app = App::new(true, SortOrder::Size);
+        let mut app = App::new(true, SortOrder::Size, false);
 
         app.add_results(vec![
             ScanResult {

@@ -168,7 +168,7 @@ fn handle_normal_key(key: KeyEvent, app: &mut App) -> Action {
             app.search_query.clear();
             Action::Continue
         }
-        KeyCode::Char('t') if app.panel != Panel::Info => {
+        KeyCode::Char('v') if app.panel != Panel::Info => {
             app.mode = Mode::MultiSelect;
             Action::Continue
         }
@@ -232,7 +232,7 @@ fn handle_search_key(key: KeyEvent, app: &mut App) -> Action {
 
 fn handle_multi_select_key(key: KeyEvent, app: &mut App) -> Action {
     match key.code {
-        KeyCode::Esc | KeyCode::Char('t') => {
+        KeyCode::Esc | KeyCode::Char('v') => {
             app.mode = Mode::Normal;
             app.deselect_all();
             Action::Continue
@@ -301,14 +301,14 @@ mod tests {
     }
 
     fn app_in_analytics() -> App {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
         app.panel = Panel::Analytics;
         app.analytics_scroll = 5;
         app
     }
 
     fn app_in_results() -> App {
-        App::new(false, SortOrder::Size)
+        App::new(false, SortOrder::Size, false)
     }
 
     // === Analytics panel key handling ===
@@ -455,14 +455,14 @@ mod tests {
     // === Confirm mode key handling ===
 
     fn app_in_confirm() -> App {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
         app.mode = Mode::Confirm;
         app.selected_indices.insert(0);
         app
     }
 
     fn app_in_multiselect_with_selections() -> App {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
         app.mode = Mode::MultiSelect;
         app.selected_indices.insert(0);
         app.selected_indices.insert(1);
@@ -545,7 +545,7 @@ mod tests {
 
     #[test]
     fn test_multiselect_enter_without_selections_stays() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
         app.mode = Mode::MultiSelect;
         // No selections
 
@@ -562,7 +562,7 @@ mod tests {
         use std::path::PathBuf;
 
         // show_protected=true so sensitive items are included (for testing blocking)
-        let mut app = App::new(true, SortOrder::Size);
+        let mut app = App::new(true, SortOrder::Size, false);
 
         // Add a normal result
         app.add_results(vec![ScanResult {
@@ -614,7 +614,7 @@ mod tests {
 
     #[test]
     fn test_single_sensitive_dismiss_returns_to_normal() {
-        let mut app = App::new(false, SortOrder::Size);
+        let mut app = App::new(false, SortOrder::Size, false);
         app.mode = Mode::SensitiveBlocked;
         app.sensitive_blocked_count = 0; // Single item context (not from multi-select)
 

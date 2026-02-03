@@ -2,6 +2,7 @@
   "permissions": {
     "allow": [
       "Read",
+      "WebSearch",
       "Bash(cargo build*)",
       "Bash(cargo run*)",
       "Bash(cargo test*)",

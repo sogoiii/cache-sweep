@@ -122,31 +122,6 @@ fn test_exclude_works() {
 }
 
 #[test]
-fn test_dry_run_does_not_delete() {
-    let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
-
-    let node_modules = temp_dir.path().join("project").join("node_modules");
-    fs::create_dir_all(&node_modules).expect("Failed to create dirs");
-    fs::write(node_modules.join("test.txt"), "test").expect("Failed to write file");
-
-    let output = Command::new(cache_sweep_bin())
-        .arg("--json")
-        .arg("-d")
-        .arg(temp_dir.path())
-        .arg("-t")
-        .arg("node_modules")
-        .arg("--delete-all")
-        .arg("--dry-run")
-        .output()
-        .expect("Failed to execute command");
-
-    assert!(output.status.success());
-
-    // Directory should still exist
-    assert!(node_modules.exists());
-}
-
-#[test]
 fn test_multiple_profiles() {
     let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
 
@@ -301,37 +276,4 @@ fn test_json_stream_empty_dir() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     // No output for empty results
     assert!(stdout.trim().is_empty());
-}
-
-#[test]
-fn test_delete_all_actually_deletes() {
-    let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
-
-    let node_modules = temp_dir.path().join("project").join("node_modules");
-    fs::create_dir_all(&node_modules).expect("Failed to create dirs");
-    fs::write(node_modules.join("test.txt"), "test").expect("Failed to write file");
-
-    assert!(node_modules.exists());
-
-    let output = Command::new(cache_sweep_bin())
-        .arg("--json")
-        .arg("-d")
-        .arg(temp_dir.path())
-        .arg("-t")
-        .arg("node_modules")
-        .arg("--delete-all")
-        .arg("-X") // Show protected (temp dirs are in /var which is protected)
-        .output()
-        .expect("Failed to execute command");
-
-    assert!(output.status.success());
-
-    // Directory should be deleted
-    assert!(!node_modules.exists());
-
-    // JSON should show deleted: true
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON");
-    let results = json["results"].as_array().unwrap();
-    assert_eq!(results[0]["deleted"], true);
 }

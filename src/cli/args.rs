@@ -4,7 +4,7 @@ use std::path::PathBuf;
 #[derive(Parser, Debug, Clone)]
 #[command(name = "cache-sweep")]
 #[command(about = "Find and delete dependency/cache folders to reclaim disk space")]
-#[command(version)]
+#[command(version, disable_version_flag = true, arg(clap::Arg::new("version").short('v').long("version").action(clap::ArgAction::Version).global(true)))]
 #[allow(clippy::struct_excessive_bools)] // CLI args naturally have many boolean flags
 pub struct Args {
     /// Select profiles to search (comma-separated). Use without value to list.
@@ -15,10 +15,6 @@ pub struct Args {
     #[arg(short = 'd', long, default_value = ".")]
     pub directory: PathBuf,
 
-    /// Auto-delete all found directories (non-interactive)
-    #[arg(short = 'D', long)]
-    pub delete_all: bool,
-
     /// Exclude directories (comma-separated)
     #[arg(short = 'E', long, value_delimiter = ',')]
     pub exclude: Option<Vec<String>>,
@@ -26,10 +22,6 @@ pub struct Args {
     /// Start from home directory
     #[arg(short = 'f', long)]
     pub full: bool,
-
-    /// Display sizes: auto, mb, gb
-    #[arg(long, default_value = "auto")]
-    pub size_unit: String,
 
     /// Sort by: size, path, or age
     #[arg(short = 's', long, default_value = "size")]
@@ -96,10 +88,8 @@ mod tests {
         Args {
             profiles: None,
             directory: PathBuf::from("."),
-            delete_all: false,
             exclude: None,
             full: false,
-            size_unit: "auto".to_string(),
             sort: "size".to_string(),
             targets: None,
             show_protected: false,

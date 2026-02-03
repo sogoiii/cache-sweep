@@ -23,7 +23,7 @@ enum Command {
 pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
     let (_guard, mut terminal) = TerminalCleanupGuard::new()?;
     let sort_order = SortOrder::from_str(&args.sort);
-    let mut app = App::new(args.show_protected, sort_order);
+    let mut app = App::new(args.show_protected, sort_order, args.dry_run);
 
     // Set visible height based on terminal
     app.visible_height = terminal.size()?.height.saturating_sub(8) as usize;

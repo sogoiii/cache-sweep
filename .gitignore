@@ -1,1 +1,21 @@
-/target
+# Build
+/target/
+
+# macOS
+.DS_Store
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+
+# Debug
+*.pdb

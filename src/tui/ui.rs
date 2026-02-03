@@ -84,11 +84,16 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 fn draw_header(frame: &mut Frame, app: &App, area: Rect, show_progress: bool) {
     let sort_label = app.sort_label();
 
+    let freed_label = if app.dry_run { "would free" } else { "freed" };
+    let dry_run_indicator = if app.dry_run { " [DRY RUN]" } else { "" };
+
     let prefix = format!(
-        " cache-sweep | {} results | {} potential | {} freed | sort:",
+        " cache-sweep{} | {} results | {} potential | {} {} | sort:",
+        dry_run_indicator,
         app.filtered_indices.len(),
         ByteSize::b(app.active_tab_subtotal()),
         ByteSize::b(app.freed_size),
+        freed_label,
     );
 
     let base_style = Style::default()
@@ -464,7 +469,11 @@ fn build_result_item(
 
     // Status indicators
     let status = if item.is_deleted {
-        "[DELETED] "
+        if app.dry_run {
+            "[DRY RUN - NOT DELETED] "
+        } else {
+            "[DELETED] "
+        }
     } else if item.is_deleting {
         "[DELETING] "
     } else if item.risk.is_sensitive {
@@ -501,11 +510,11 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
         Mode::Normal => match app.panel {
             Panel::Info => "↑/↓:navigate | ←:back | o:open | q:quit".to_string(),
             Panel::Analytics => "↑/↓:scroll | a/Esc:back | q:quit".to_string(),
-            _ if has_tabs => "Tab/⇧Tab:switch | ↑/↓:nav | /:search | s:sort | t:multi | SPACE:del | a:stats | q:quit".to_string(),
-            Panel::Results => "↑/↓:nav | /:search | s:sort | t:multi | SPACE:del | a:stats | q:quit".to_string(),
+            _ if has_tabs => "Tab/⇧Tab:switch | ↑/↓:nav | /:search | s:sort | v:multi | SPACE:del | a:analytics | q:quit".to_string(),
+            Panel::Results => "↑/↓:nav | /:search | s:sort | v:multi | SPACE:del | a:analytics | q:quit".to_string(),
         },
         Mode::Search => "Type to filter | Enter:confirm | Esc:cancel".to_string(),
-        Mode::MultiSelect => "SPACE:toggle | a:all | Enter:delete selected | t/Esc:exit".to_string(),
+        Mode::MultiSelect => "SPACE:toggle | a:all | Enter:delete selected | v/Esc:exit".to_string(),
         Mode::Confirm => "Y:confirm | N/Esc:cancel".to_string(),
         Mode::SensitiveBlocked => "Enter/Esc:dismiss".to_string(),
     };

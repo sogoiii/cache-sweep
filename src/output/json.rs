@@ -5,7 +5,6 @@ use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
 use crate::cli::Args;
-use crate::delete::delete_directory;
 use crate::risk::analyze_risk;
 use crate::scanner::{calculate_size, start_scan};
 
@@ -23,7 +22,6 @@ struct JsonResult {
     size: u64,
     modification_time: Option<u64>,
     risk_analysis: RiskJson,
-    deleted: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -76,13 +74,6 @@ pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
 
-            let deleted = if args.delete_all {
-                let del_result = delete_directory(&result.path, args.dry_run).await;
-                Some(del_result.success)
-            } else {
-                None
-            };
-
             results.push(JsonResult {
                 path: result.path.to_string_lossy().to_string(),
                 size,
@@ -91,7 +82,6 @@ pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
                     is_sensitive: risk.is_sensitive,
                     reason: risk.reason,
                 },
-                deleted,
             });
         }
     }
