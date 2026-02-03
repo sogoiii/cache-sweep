@@ -1,5 +1,13 @@
 {
-  "enabledPlugins": {
-    "ralph-wiggum@claude-code-plugins": true
+  "permissions": {
+    "allow": [
+      "Read",
+      "Bash(cargo build*)",
+      "Bash(cargo run*)",
+      "Bash(cargo test*)",
+      "Bash(cargo check*)",
+      "Bash(cargo clippy*)",
+      "Bash(cargo fmt*)"
+    ]
   }
 }

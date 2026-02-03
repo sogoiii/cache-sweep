@@ -1,113 +1,152 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working with this repository.
 
-## Project Status
+## Project Overview
 
-**Implemented.** Core functionality complete with TUI, JSON output modes, and multi-profile support.
+`cache-sweep` - Rust CLI for finding/deleting dependency and cache folders (node_modules, .venv, target, etc.). TUI-based, inspired by npkill.
 
-## What This Is
+**Stack:** tokio (async), ratatui (TUI), clap (CLI), ignore (parallel walking)
 
-`cache-sweep` is a Rust CLI tool for finding and deleting dependency/cache folders (node_modules, .venv, target, etc.). TUI-based, inspired by npkill. Uses **tokio** for async and **ratatui** for terminal UI.
-
-## Build Commands
+## Commands
 
 ```bash
 cargo build --release
-cargo run -- --profiles node -d ~/projects
-cargo test
-./target/release/cache-sweep --json -d . -t node_modules
-./target/release/cache-sweep --json-stream -d . -p node,python
+cargo run -- -d ~/projects              # TUI mode
+cargo run -- --json -d . -p node        # JSON output
+cargo test                               # Run tests
+cargo clippy                             # Lint check
 ```
-
-## Critical Architecture Decisions (v3)
-
-These constraints are **non-negotiable** based on multi-reviewer consensus:
-
-### Streaming (NOT Batching Everything)
-- **NO `.collect::<Vec<_>>()`** on filesystem walks
-- Stream results immediately via channel as found
-- Use `spawn_blocking` with `ignore::WalkBuilder::build_parallel()`
-
-### Channel Architecture
-- Results channel: **unbounded**
-- Use `.send()` for unbounded (NOT `blocking_send`)
-- **Drain channel fully** on each recv (don't cap at N batches)
-
-### Walker Configuration
-```rust
-ignore::WalkBuilder::new(&root)
-    .hidden(false)           // Scan hidden dirs (.pnpm-store, .yarn)
-    .follow_links(false)     // SAFETY: never follow symlinks
-    .git_ignore(false)       // Don't skip targets
-    .build_parallel()
-```
-
-### Target Matching
-- Return `WalkState::Skip` when target matched (don't descend into node_modules/)
-- Batch 50 results per send via `ResultBatcher`
-
-### TUI Event Loop
-- Use `crossterm::EventStream` with `tokio::select!`
-- Add `biased;` to prioritize keyboard input over results
-- Throttle sorting (tick-based, not per-message)
-- Terminal cleanup via RAII Drop guard (`TerminalCleanupGuard`)
 
 ## File Structure
 
 ```
 src/
-├── main.rs              # Entry, tokio runtime, CLI dispatch
+├── main.rs              # Entry point, tokio runtime
 ├── cli/
-│   ├── mod.rs
-│   └── args.rs          # Clap argument definitions
+│   └── args.rs          # Clap definitions
 ├── scanner/
-│   ├── mod.rs
-│   ├── walker.rs        # Streaming traversal with build_parallel()
-│   ├── batcher.rs       # Result batching (50 per send)
-│   └── size.rs          # Async size calculation (semaphore-limited)
+│   ├── walker.rs        # Parallel traversal (build_parallel)
+│   ├── batcher.rs       # Result batching (50/send)
+│   └── size.rs          # Async size calculation
 ├── profiles/
-│   ├── mod.rs
-│   └── builtin.rs       # 17 built-in profiles (node, python, rust, etc.)
+│   └── builtin.rs       # 17 profiles (node, python, rust, etc.)
 ├── risk/
-│   ├── mod.rs
 │   └── analysis.rs      # Sensitive directory detection
 ├── delete/
-│   ├── mod.rs
 │   └── engine.rs        # Async deletion
 ├── tui/
-│   ├── mod.rs
-│   ├── app.rs           # Application state
-│   ├── cleanup.rs       # Terminal RAII cleanup guard
-│   ├── event_loop.rs    # tokio::select! with biased for input priority
-│   ├── input.rs         # Keyboard handling
+│   ├── app.rs           # Application state (CRITICAL: stable indices)
+│   ├── event_loop.rs    # tokio::select! with biased
+│   ├── input.rs         # Mode-based key handling
 │   ├── ui.rs            # Ratatui rendering
+│   ├── cleanup.rs       # Terminal RAII guard
+│   ├── analytics.rs     # Real-time aggregation
+│   ├── widgets/
+│   │   └── gradient_bar.rs  # Dual progress bar
 │   └── panels/
-│       ├── mod.rs
 │       ├── results.rs
 │       ├── info.rs
-│       ├── options.rs
-│       └── help.rs
+│       └── analytics.rs
 └── output/
-    ├── mod.rs
-    ├── json.rs          # Complete JSON output
-    └── stream.rs        # Streaming JSON (one object per line)
+    ├── json.rs          # Complete JSON
+    └── stream.rs        # Streaming JSON (NDJSON)
 ```
+
+## Architecture Constraints (Non-Negotiable)
+
+### Streaming Results
+- **NO `.collect::<Vec<_>>()`** on filesystem walks
+- Stream via unbounded channel, drain fully on each recv
+- Use `spawn_blocking` with `ignore::WalkBuilder::build_parallel()`
+
+### Stable Indices Pattern
+- **NEVER reorder `results` vec** - indices used by async size calculations
+- Sort `filtered_indices` (indices into results), not results themselves
+- Size updates use raw index, display uses filtered order
+
+### Walker Config
+```rust
+WalkBuilder::new(&root)
+    .hidden(false)           // Scan hidden dirs
+    .follow_links(false)     // SAFETY: never follow symlinks
+    .git_ignore(false)       // Don't skip targets
+    .build_parallel()
+```
+
+### Event Loop
+- `crossterm::EventStream` + `tokio::select!` with `biased;` for input priority
+- Tick-based debouncing via `needs_sort`/`needs_filter` flags
+- Terminal cleanup via RAII (`TerminalCleanupGuard`)
+
+## Coding Standards
+
+### Clippy
+- **Required:** `pedantic`, `perf`, `nursery` warnings enabled
+- **Forbidden:** `unsafe_code`
+- When bypassing lint, add explanatory `#[allow(clippy::...)]` comment:
+```rust
+#[allow(clippy::struct_excessive_bools)] // TUI state naturally tracks multiple boolean flags
+pub struct App { ... }
+
+#[allow(clippy::too_many_lines)] // Event loop is inherently complex; splitting would obscure flow
+pub async fn run(...) { ... }
+```
+
+### Testing
+- Unit tests in same file under `#[cfg(test)] mod tests`
+- Helper functions for test setup (e.g., `fn app_with_items(...)`)
+- Test edge cases: empty, boundary, wraparound
+- Name tests descriptively: `test_<function>_<scenario>`
+
+### Widget Pattern (Builder)
+```rust
+pub struct MyWidget { ... }
+
+impl MyWidget {
+    pub const fn new() -> Self { ... }
+    pub const fn some_prop(mut self, val: T) -> Self { self.prop = val; self }
+}
+
+impl Widget for MyWidget {
+    fn render(self, area: Rect, buf: &mut Buffer) { ... }
+}
+```
+
+### Mode-Based Input
+- Separate handler per mode: `handle_normal_key`, `handle_search_key`, etc.
+- Return `Action` enum (Continue, Quit, Delete, etc.)
+- Panel-specific handling before mode dispatch
+
+### State Management
+- Deferred operations: set `needs_*` flag, process on tick
+- Never mutate + rebuild in same call
+- `rebuild_display_indices()` handles filter + sort + cursor adjustment
+
+### Error Handling
+- `thiserror` for custom errors, `anyhow` for propagation
+- Collect errors in `app.errors` for display
+- Use `.ok()` for fire-and-forget channel sends
+
+### Const Functions
+- Use `const fn` for constructors and simple getters when possible
+- Add `#[allow(clippy::missing_const_for_fn)]` comment if `&mut self` prevents it
 
 ## Key Crates
 
 | Purpose | Crate |
 |---------|-------|
-| Async runtime | `tokio` (rt-multi-thread, sync, fs, signal) |
-| Directory walking | `ignore` (build_parallel) |
+| Async | `tokio` (rt-multi-thread, sync, fs, time, signal) |
+| Walking | `ignore` (build_parallel) |
 | TUI | `ratatui` + `crossterm` (EventStream) |
 | CLI | `clap` (derive) |
-| Cancellation | `tokio_util::sync::CancellationToken` |
+| Cancel | `tokio_util::sync::CancellationToken` |
 | Errors | `thiserror` + `anyhow` |
 | JSON | `serde` + `serde_json` |
+| Sizes | `bytesize` |
 
 ## Profiles
 
-17 built-in profiles: node, python, data-science, java, android, swift, dotnet, rust, ruby, elixir, haskell, scala, cpp, unity, unreal, godot, infra
+17 built-in: node, python, data-science, java, android, swift, dotnet, rust, ruby, elixir, haskell, scala, cpp, unity, unreal, godot, infra
 
-Use `--profiles all` to scan all targets, or combine with `--profiles node,python`
+Default: `--profiles all` (scans all targets)
