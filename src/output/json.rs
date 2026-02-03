@@ -66,7 +66,7 @@ pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
 
             let risk = analyze_risk(&result.path);
 
-            if args.exclude_sensitive && risk.is_sensitive {
+            if !args.show_protected && risk.is_sensitive {
                 continue;
             }
 

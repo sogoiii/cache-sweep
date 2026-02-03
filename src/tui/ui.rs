@@ -75,6 +75,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if app.mode == Mode::Confirm {
         draw_confirm_popup(frame, app);
     }
+
+    if app.mode == Mode::SensitiveBlocked {
+        draw_sensitive_blocked_popup(frame, app);
+    }
 }
 
 fn draw_header(frame: &mut Frame, app: &App, area: Rect, show_progress: bool) {
@@ -256,7 +260,7 @@ fn draw_results_panel(frame: &mut Frame, app: &App, area: Rect) {
         Mode::MultiSelect | Mode::Confirm => {
             format!(" Results ({} selected) ", app.selected_indices.len())
         }
-        Mode::Normal => " Results - SPACE to delete ".to_string(),
+        Mode::Normal | Mode::SensitiveBlocked => " Results - SPACE to delete ".to_string(),
     };
 
     // Calculate column positions based on area width
@@ -328,6 +332,85 @@ fn draw_confirm_popup(frame: &mut Frame, app: &App) {
     );
 
     let block = Block::bordered().title(" Confirm ");
+    let paragraph = Paragraph::new(text).block(block).centered();
+    frame.render_widget(paragraph, area);
+}
+
+fn draw_sensitive_blocked_popup(frame: &mut Frame, app: &App) {
+    let area = popup_area(frame.area(), 50, 30);
+    frame.render_widget(Clear, area);
+
+    let count = app.sensitive_blocked_count;
+
+    let text = if count > 0 {
+        // Multi-select context: show count of protected directories
+        vec![
+            Line::from(Span::styled(
+                "⚠️  Protected Directories Selected",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                format!(
+                    "You have selected {} protected {}.",
+                    count,
+                    if count == 1 {
+                        "directory"
+                    } else {
+                        "directories"
+                    }
+                ),
+                Style::default().fg(Color::White),
+            )),
+            Line::from(""),
+            Line::from("These folders are inside system or application"),
+            Line::from("directories and cannot be deleted."),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Deselect them to continue, or use -x flag",
+                Style::default().fg(Color::DarkGray),
+            )),
+            Line::from(Span::styled(
+                "to hide sensitive directories from results.",
+                Style::default().fg(Color::DarkGray),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Press Enter, Esc, or Space to go back",
+                Style::default().fg(Color::Cyan),
+            )),
+        ]
+    } else {
+        // Single item context
+        vec![
+            Line::from(Span::styled(
+                "⚠️  Cannot Delete Sensitive Directory",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from("This folder is inside a system or application"),
+            Line::from("directory. Deleting it could break your system"),
+            Line::from("or installed applications."),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Use -x flag to hide sensitive directories.",
+                Style::default().fg(Color::DarkGray),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Press Enter, Esc, or Space to dismiss",
+                Style::default().fg(Color::Cyan),
+            )),
+        ]
+    };
+
+    let block = Block::bordered()
+        .title(" Blocked ")
+        .border_style(Style::default().fg(Color::Yellow));
     let paragraph = Paragraph::new(text).block(block).centered();
     frame.render_widget(paragraph, area);
 }
@@ -424,6 +507,7 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
         Mode::Search => "Type to filter | Enter:confirm | Esc:cancel".to_string(),
         Mode::MultiSelect => "SPACE:toggle | a:all | Enter:delete selected | t/Esc:exit".to_string(),
         Mode::Confirm => "Y:confirm | N/Esc:cancel".to_string(),
+        Mode::SensitiveBlocked => "Enter/Esc:dismiss".to_string(),
     };
 
     let footer = Paragraph::new(help_text)

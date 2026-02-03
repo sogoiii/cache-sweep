@@ -23,6 +23,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App) -> Action {
         Mode::MultiSelect => handle_multi_select_key(key, app),
         Mode::Normal => handle_normal_key(key, app),
         Mode::Confirm => handle_confirm_key(key, app),
+        Mode::SensitiveBlocked => handle_sensitive_blocked_key(key, app),
     }
 }
 
@@ -35,6 +36,24 @@ fn handle_confirm_key(key: KeyEvent, app: &mut App) -> Action {
         }
         KeyCode::Char('n' | 'N') | KeyCode::Esc => {
             app.mode = Mode::MultiSelect;
+            Action::Continue
+        }
+        _ => Action::Continue,
+    }
+}
+
+/// Handle the "sensitive directory blocked" modal - dismiss and return to appropriate mode
+#[allow(clippy::missing_const_for_fn)] // &mut self methods can't be const
+fn handle_sensitive_blocked_key(key: KeyEvent, app: &mut App) -> Action {
+    match key.code {
+        KeyCode::Enter | KeyCode::Esc | KeyCode::Char(' ') => {
+            // If we came from multi-select (count > 0), return there so user can deselect
+            if app.sensitive_blocked_count > 0 {
+                app.sensitive_blocked_count = 0;
+                app.mode = Mode::MultiSelect;
+            } else {
+                app.mode = Mode::Normal;
+            }
             Action::Continue
         }
         _ => Action::Continue,
@@ -253,7 +272,14 @@ fn handle_multi_select_key(key: KeyEvent, app: &mut App) -> Action {
         }
         KeyCode::Enter => {
             if !app.selected_indices.is_empty() {
-                app.mode = Mode::Confirm;
+                // Check if any selected items are sensitive
+                let sensitive_count = app.count_sensitive_in_selection();
+                if sensitive_count > 0 {
+                    app.sensitive_blocked_count = sensitive_count;
+                    app.mode = Mode::SensitiveBlocked;
+                } else {
+                    app.mode = Mode::Confirm;
+                }
             }
             Action::Continue
         }
@@ -527,5 +553,74 @@ mod tests {
 
         assert_eq!(action, Action::Continue);
         assert_eq!(app.mode, Mode::MultiSelect);
+    }
+
+    // === Multi-select with sensitive directories ===
+
+    fn app_with_sensitive_selection() -> App {
+        use crate::scanner::ScanResult;
+        use std::path::PathBuf;
+
+        // show_protected=true so sensitive items are included (for testing blocking)
+        let mut app = App::new(true, SortOrder::Size);
+
+        // Add a normal result
+        app.add_results(vec![ScanResult {
+            path: PathBuf::from("/home/user/projects/app/node_modules"),
+            size: Some(1000),
+            file_count: Some(10),
+            modified: None,
+            is_sensitive: false,
+        }]);
+
+        // Add a sensitive result (system path)
+        app.add_results(vec![ScanResult {
+            path: PathBuf::from("/usr/lib/node_modules"),
+            size: Some(2000),
+            file_count: Some(20),
+            modified: None,
+            is_sensitive: true,
+        }]);
+
+        app.mode = Mode::MultiSelect;
+        // Select the sensitive item (index 1)
+        app.selected_indices.insert(1);
+        app
+    }
+
+    #[test]
+    fn test_multiselect_enter_with_sensitive_blocks() {
+        let mut app = app_with_sensitive_selection();
+
+        let action = handle_key(key(KeyCode::Enter), &mut app);
+
+        assert_eq!(action, Action::Continue);
+        assert_eq!(app.mode, Mode::SensitiveBlocked);
+        assert_eq!(app.sensitive_blocked_count, 1);
+    }
+
+    #[test]
+    fn test_multiselect_sensitive_dismiss_returns_to_multiselect() {
+        let mut app = app_with_sensitive_selection();
+        app.mode = Mode::SensitiveBlocked;
+        app.sensitive_blocked_count = 1;
+
+        let action = handle_key(key(KeyCode::Enter), &mut app);
+
+        assert_eq!(action, Action::Continue);
+        assert_eq!(app.mode, Mode::MultiSelect);
+        assert_eq!(app.sensitive_blocked_count, 0);
+    }
+
+    #[test]
+    fn test_single_sensitive_dismiss_returns_to_normal() {
+        let mut app = App::new(false, SortOrder::Size);
+        app.mode = Mode::SensitiveBlocked;
+        app.sensitive_blocked_count = 0; // Single item context (not from multi-select)
+
+        let action = handle_key(key(KeyCode::Enter), &mut app);
+
+        assert_eq!(action, Action::Continue);
+        assert_eq!(app.mode, Mode::Normal);
     }
 }

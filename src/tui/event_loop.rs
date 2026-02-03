@@ -6,7 +6,7 @@ use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::app::{App, SortOrder};
+use super::app::{App, Mode, SortOrder};
 use super::cleanup::TerminalCleanupGuard;
 use super::input::{handle_key, Action};
 use super::ui;
@@ -23,7 +23,7 @@ enum Command {
 pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
     let (_guard, mut terminal) = TerminalCleanupGuard::new()?;
     let sort_order = SortOrder::from_str(&args.sort);
-    let mut app = App::new(args.exclude_sensitive, sort_order);
+    let mut app = App::new(args.show_protected, sort_order);
 
     // Set visible height based on terminal
     app.visible_height = terminal.size()?.height.saturating_sub(8) as usize;
@@ -68,7 +68,10 @@ pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
                             Action::Delete => {
                                 if let Some(idx) = app.current_index() {
                                     if let Some(item) = app.results.get(idx) {
-                                        if !item.is_deleted && !item.is_deleting {
+                                        if item.risk.is_sensitive {
+                                            // Block deletion of sensitive directories
+                                            app.mode = Mode::SensitiveBlocked;
+                                        } else if !item.is_deleted && !item.is_deleting {
                                             cmd_tx.send(Command::Delete(idx)).await.ok();
                                         }
                                     }
@@ -76,7 +79,13 @@ pub async fn run(args: &Args, cancel_token: CancellationToken) -> Result<()> {
                             }
                             Action::DeleteSelected => {
                                 let indices: Vec<usize> = app.selected_indices.iter().copied().collect();
-                                if !indices.is_empty() {
+                                // Check if any selected items are sensitive
+                                let has_sensitive = indices.iter().any(|&idx| {
+                                    app.results.get(idx).is_some_and(|item| item.risk.is_sensitive)
+                                });
+                                if has_sensitive {
+                                    app.mode = Mode::SensitiveBlocked;
+                                } else if !indices.is_empty() {
                                     cmd_tx.send(Command::DeleteBatch(indices)).await.ok();
                                 }
                             }

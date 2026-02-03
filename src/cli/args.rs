@@ -39,9 +39,9 @@ pub struct Args {
     #[arg(short = 't', long, value_delimiter = ',')]
     pub targets: Option<Vec<String>>,
 
-    /// Exclude system-critical directories
-    #[arg(short = 'x', long)]
-    pub exclude_sensitive: bool,
+    /// Include protected system directories in results (hidden by default)
+    #[arg(short = 'X', long)]
+    pub show_protected: bool,
 
     /// Simulate deletion without actually deleting
     #[arg(long)]
@@ -102,7 +102,7 @@ mod tests {
             size_unit: "auto".to_string(),
             sort: "size".to_string(),
             targets: None,
-            exclude_sensitive: false,
+            show_protected: false,
             dry_run: false,
             json_stream: false,
             json: false,

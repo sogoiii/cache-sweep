@@ -73,6 +73,7 @@ fn test_json_finds_target() {
         .arg(temp_dir.path())
         .arg("-t")
         .arg("node_modules")
+        .arg("-X") // Show protected (temp dirs are in /var which is protected)
         .output()
         .expect("Failed to execute command");
 
@@ -106,6 +107,7 @@ fn test_exclude_works() {
         .arg("node_modules")
         .arg("-E")
         .arg("proj1")
+        .arg("-X") // Show protected (temp dirs are in /var which is protected)
         .output()
         .expect("Failed to execute command");
 
@@ -160,6 +162,7 @@ fn test_multiple_profiles() {
         .arg(temp_dir.path())
         .arg("-p")
         .arg("node,python")
+        .arg("-X") // Show protected (temp dirs are in /var which is protected)
         .output()
         .expect("Failed to execute command");
 
@@ -317,6 +320,7 @@ fn test_delete_all_actually_deletes() {
         .arg("-t")
         .arg("node_modules")
         .arg("--delete-all")
+        .arg("-X") // Show protected (temp dirs are in /var which is protected)
         .output()
         .expect("Failed to execute command");
 

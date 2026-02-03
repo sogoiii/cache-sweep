@@ -36,6 +36,7 @@ pub enum Mode {
     Search,
     MultiSelect,
     Confirm,
+    SensitiveBlocked, // Modal shown when user tries to delete a sensitive directory
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -97,7 +98,7 @@ pub struct App {
     pub errors: Vec<String>,
     pub selected_indices: HashSet<usize>,
     pub visible_height: usize,
-    pub exclude_sensitive: bool,
+    pub show_protected: bool,
     pub sizes_calculated: usize,
     pub spinner_tick: usize,
     pub sort_flash: usize,
@@ -109,10 +110,12 @@ pub struct App {
     pub active_tab: usize,          // 0 = "All", 1+ = specific groups
     pub tab_scroll_offset: usize,   // first visible group index in scrollable area
     pub visible_group_count: usize, // how many groups fit (set by UI)
+    // For multi-select sensitive blocking
+    pub sensitive_blocked_count: usize, // count of sensitive items in selection (for modal display)
 }
 
 impl App {
-    pub fn new(exclude_sensitive: bool, sort_order: SortOrder) -> Self {
+    pub fn new(show_protected: bool, sort_order: SortOrder) -> Self {
         Self {
             results: Vec::new(),
             filtered_indices: Vec::new(),
@@ -130,7 +133,7 @@ impl App {
             errors: Vec::new(),
             selected_indices: HashSet::new(),
             visible_height: 20,
-            exclude_sensitive,
+            show_protected,
             sizes_calculated: 0,
             spinner_tick: 0,
             sort_flash: 0,
@@ -140,15 +143,28 @@ impl App {
             active_tab: 0,          // 0 = "All" tab (always first)
             tab_scroll_offset: 0,   // first visible group in scrollable area
             visible_group_count: 5, // default, updated by UI on render
+            sensitive_blocked_count: 0,
         }
+    }
+
+    /// Count how many selected items are sensitive (for multi-select blocking)
+    pub fn count_sensitive_in_selection(&self) -> usize {
+        self.selected_indices
+            .iter()
+            .filter(|&&idx| {
+                self.results
+                    .get(idx)
+                    .is_some_and(|item| item.risk.is_sensitive)
+            })
+            .count()
     }
 
     pub fn add_results(&mut self, results: Vec<ScanResult>) {
         for result in results {
             let item = ResultItem::from_scan_result(result);
 
-            // Skip sensitive if excluded
-            if self.exclude_sensitive && item.risk.is_sensitive {
+            // Skip protected directories unless explicitly requested
+            if !self.show_protected && item.risk.is_sensitive {
                 continue;
             }
 
@@ -1069,5 +1085,144 @@ mod tests {
         // Scroll offset should adjust to show tab 4
         // With visible_group_count=2, offset should be 2 to show tabs 3,4
         assert!(app.tab_scroll_offset >= 2);
+    }
+
+    // === show_protected tests ===
+
+    fn make_sensitive_scan_result(path: &str) -> ScanResult {
+        ScanResult {
+            path: PathBuf::from(path),
+            size: Some(100),
+            file_count: None,
+            modified: None,
+            is_sensitive: true, // This is just metadata; actual sensitivity is determined by analyze_risk
+        }
+    }
+
+    #[test]
+    fn test_show_protected_false_hides_sensitive() {
+        // show_protected=false means hide sensitive items
+        let mut app = App::new(false, SortOrder::Size);
+
+        // Add a protected system path (will be detected as sensitive)
+        app.add_results(vec![ScanResult {
+            path: PathBuf::from("/usr/lib/node_modules"),
+            size: Some(100),
+            file_count: None,
+            modified: None,
+            is_sensitive: false,
+        }]);
+
+        // Should be hidden (not added to results)
+        assert_eq!(app.results.len(), 0);
+    }
+
+    #[test]
+    fn test_show_protected_true_shows_sensitive() {
+        // show_protected=true means show sensitive items
+        let mut app = App::new(true, SortOrder::Size);
+
+        // Add a protected system path
+        app.add_results(vec![ScanResult {
+            path: PathBuf::from("/usr/lib/node_modules"),
+            size: Some(100),
+            file_count: None,
+            modified: None,
+            is_sensitive: false,
+        }]);
+
+        // Should be visible
+        assert_eq!(app.results.len(), 1);
+        assert!(app.results[0].risk.is_sensitive);
+    }
+
+    #[test]
+    fn test_show_protected_false_allows_normal_paths() {
+        let mut app = App::new(false, SortOrder::Size);
+
+        // Add a normal project path
+        app.add_results(vec![ScanResult {
+            path: PathBuf::from("/home/user/projects/app/node_modules"),
+            size: Some(100),
+            file_count: None,
+            modified: None,
+            is_sensitive: false,
+        }]);
+
+        // Should be visible (not sensitive)
+        assert_eq!(app.results.len(), 1);
+        assert!(!app.results[0].risk.is_sensitive);
+    }
+
+    // === count_sensitive_in_selection tests ===
+
+    #[test]
+    fn test_count_sensitive_in_selection_empty() {
+        let app = App::new(true, SortOrder::Size);
+        assert_eq!(app.count_sensitive_in_selection(), 0);
+    }
+
+    #[test]
+    fn test_count_sensitive_in_selection_with_sensitive() {
+        let mut app = App::new(true, SortOrder::Size);
+
+        // Add mixed results
+        app.add_results(vec![
+            ScanResult {
+                path: PathBuf::from("/home/user/project/node_modules"),
+                size: Some(100),
+                file_count: None,
+                modified: None,
+                is_sensitive: false,
+            },
+            ScanResult {
+                path: PathBuf::from("/usr/lib/node_modules"),
+                size: Some(200),
+                file_count: None,
+                modified: None,
+                is_sensitive: false,
+            },
+            ScanResult {
+                path: PathBuf::from("/var/cache/something"),
+                size: Some(300),
+                file_count: None,
+                modified: None,
+                is_sensitive: false,
+            },
+        ]);
+
+        // Select the two sensitive items (indices 1 and 2)
+        app.selected_indices.insert(1);
+        app.selected_indices.insert(2);
+
+        assert_eq!(app.count_sensitive_in_selection(), 2);
+    }
+
+    #[test]
+    fn test_count_sensitive_in_selection_none_sensitive() {
+        let mut app = App::new(true, SortOrder::Size);
+
+        app.add_results(vec![
+            ScanResult {
+                path: PathBuf::from("/home/user/project1/node_modules"),
+                size: Some(100),
+                file_count: None,
+                modified: None,
+                is_sensitive: false,
+            },
+            ScanResult {
+                path: PathBuf::from("/home/user/project2/node_modules"),
+                size: Some(200),
+                file_count: None,
+                modified: None,
+                is_sensitive: false,
+            },
+        ]);
+
+        // Select both (neither is sensitive)
+        app.selected_indices.insert(0);
+        app.selected_indices.insert(1);
+
+        assert_eq!(app.count_sensitive_in_selection(), 0);
     }
 }
