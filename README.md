@@ -23,6 +23,13 @@ If you have dozens of projects, you might be losing **tens of gigabytes** to fol
 
 ## Installation
 
+### Homebrew (Recommended)
+
+```bash
+brew tap sogoiii/tap
+brew install cache-sweep
+```
+
 ### From Source
 
 ```bash
@@ -139,7 +146,7 @@ When you run `cache-sweep` without `--json` flags, you get an interactive termin
 
 ### Main Screen Layout
 
-![cache-sweep demo](demo.gif)
+![cache-sweep demo](docs/demo.gif)
 
 ### Keyboard Controls
 
