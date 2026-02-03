@@ -2,10 +2,10 @@ use std::time::{Duration, SystemTime};
 
 use bytesize::ByteSize;
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Flex, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
     Frame,
 };
 
@@ -71,6 +71,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
     draw_main(frame, app, chunks[2]);
     draw_footer(frame, app, chunks[3]);
+
+    if app.mode == Mode::Confirm {
+        draw_confirm_popup(frame, app);
+    }
 }
 
 fn draw_header(frame: &mut Frame, app: &App, area: Rect, show_progress: bool) {
@@ -249,7 +253,9 @@ fn draw_results_panel(frame: &mut Frame, app: &App, area: Rect) {
 
     let title = match app.mode {
         Mode::Search => format!(" Results (search: {}_) ", app.search_query),
-        Mode::MultiSelect => format!(" Results ({} selected) ", app.selected_indices.len()),
+        Mode::MultiSelect | Mode::Confirm => {
+            format!(" Results ({} selected) ", app.selected_indices.len())
+        }
         Mode::Normal => " Results - SPACE to delete ".to_string(),
     };
 
@@ -294,6 +300,36 @@ fn draw_results_panel(frame: &mut Frame, app: &App, area: Rect) {
     );
 
     frame.render_widget(list, chunks[1]);
+}
+
+fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
+    let vertical = Layout::vertical([Constraint::Percentage(percent_y)]).flex(Flex::Center);
+    let horizontal = Layout::horizontal([Constraint::Percentage(percent_x)]).flex(Flex::Center);
+    let [area] = vertical.areas(area);
+    let [area] = horizontal.areas(area);
+    area
+}
+
+fn draw_confirm_popup(frame: &mut Frame, app: &App) {
+    let area = popup_area(frame.area(), 35, 15);
+    frame.render_widget(Clear, area);
+
+    let total_size: u64 = app
+        .selected_indices
+        .iter()
+        .filter_map(|&idx| app.results.get(idx))
+        .filter_map(|r| r.scan_result.size)
+        .sum();
+
+    let text = format!(
+        "Permanently delete {} items ({})?\n\n[Y]es  /  [N]o",
+        app.selected_indices.len(),
+        ByteSize::b(total_size)
+    );
+
+    let block = Block::bordered().title(" Confirm ");
+    let paragraph = Paragraph::new(text).block(block).centered();
+    frame.render_widget(paragraph, area);
 }
 
 /// Builds list items for the results view
@@ -387,6 +423,7 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
         },
         Mode::Search => "Type to filter | Enter:confirm | Esc:cancel".to_string(),
         Mode::MultiSelect => "SPACE:toggle | a:all | Enter:delete selected | t/Esc:exit".to_string(),
+        Mode::Confirm => "Y:confirm | N/Esc:cancel".to_string(),
     };
 
     let footer = Paragraph::new(help_text)
@@ -459,5 +496,28 @@ mod tests {
         let style = result_item_style(false, true, true, false);
         // Deleted style wins over selected (no cursor)
         assert_eq!(style.fg, Some(Color::DarkGray));
+    }
+
+    // === Popup area tests ===
+
+    #[test]
+    fn test_popup_area_centers_correctly() {
+        let area = Rect::new(0, 0, 100, 100);
+        let popup = popup_area(area, 50, 50);
+
+        // 50% of 100 = 50, centered means starting at 25
+        assert_eq!(popup.width, 50);
+        assert_eq!(popup.height, 50);
+        assert_eq!(popup.x, 25);
+        assert_eq!(popup.y, 25);
+    }
+
+    #[test]
+    fn test_popup_area_small_percentages() {
+        let area = Rect::new(0, 0, 100, 50);
+        let popup = popup_area(area, 20, 20);
+
+        assert_eq!(popup.width, 20);
+        assert_eq!(popup.height, 10); // 20% of 50
     }
 }

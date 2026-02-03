@@ -35,6 +35,7 @@ pub enum Mode {
     Normal,
     Search,
     MultiSelect,
+    Confirm,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

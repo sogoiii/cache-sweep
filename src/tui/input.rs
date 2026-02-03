@@ -22,6 +22,22 @@ pub fn handle_key(key: KeyEvent, app: &mut App) -> Action {
         Mode::Search => handle_search_key(key, app),
         Mode::MultiSelect => handle_multi_select_key(key, app),
         Mode::Normal => handle_normal_key(key, app),
+        Mode::Confirm => handle_confirm_key(key, app),
+    }
+}
+
+#[allow(clippy::missing_const_for_fn)]
+fn handle_confirm_key(key: KeyEvent, app: &mut App) -> Action {
+    match key.code {
+        KeyCode::Char('y' | 'Y') | KeyCode::Enter => {
+            app.mode = Mode::Normal;
+            Action::DeleteSelected
+        }
+        KeyCode::Char('n' | 'N') | KeyCode::Esc => {
+            app.mode = Mode::MultiSelect;
+            Action::Continue
+        }
+        _ => Action::Continue,
     }
 }
 
@@ -236,11 +252,10 @@ fn handle_multi_select_key(key: KeyEvent, app: &mut App) -> Action {
             Action::Continue
         }
         KeyCode::Enter => {
-            if app.selected_indices.is_empty() {
-                Action::Continue
-            } else {
-                Action::DeleteSelected
+            if !app.selected_indices.is_empty() {
+                app.mode = Mode::Confirm;
             }
+            Action::Continue
         }
 
         _ => Action::Continue,
@@ -409,5 +424,108 @@ mod tests {
         handle_key(key(KeyCode::Char('a')), &mut app);
 
         assert_eq!(app.panel, Panel::Info);
+    }
+
+    // === Confirm mode key handling ===
+
+    fn app_in_confirm() -> App {
+        let mut app = App::new(false, SortOrder::Size);
+        app.mode = Mode::Confirm;
+        app.selected_indices.insert(0);
+        app
+    }
+
+    fn app_in_multiselect_with_selections() -> App {
+        let mut app = App::new(false, SortOrder::Size);
+        app.mode = Mode::MultiSelect;
+        app.selected_indices.insert(0);
+        app.selected_indices.insert(1);
+        app
+    }
+
+    #[test]
+    fn test_confirm_y_deletes_and_exits() {
+        let mut app = app_in_confirm();
+        let action = handle_key(key(KeyCode::Char('y')), &mut app);
+
+        assert_eq!(action, Action::DeleteSelected);
+        assert_eq!(app.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn test_confirm_uppercase_y_deletes() {
+        let mut app = app_in_confirm();
+        let action = handle_key(key(KeyCode::Char('Y')), &mut app);
+
+        assert_eq!(action, Action::DeleteSelected);
+        assert_eq!(app.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn test_confirm_enter_confirms() {
+        let mut app = app_in_confirm();
+        let action = handle_key(key(KeyCode::Enter), &mut app);
+
+        assert_eq!(action, Action::DeleteSelected);
+        assert_eq!(app.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn test_confirm_n_cancels() {
+        let mut app = app_in_confirm();
+        let action = handle_key(key(KeyCode::Char('n')), &mut app);
+
+        assert_eq!(action, Action::Continue);
+        assert_eq!(app.mode, Mode::MultiSelect);
+    }
+
+    #[test]
+    fn test_confirm_uppercase_n_cancels() {
+        let mut app = app_in_confirm();
+        let action = handle_key(key(KeyCode::Char('N')), &mut app);
+
+        assert_eq!(action, Action::Continue);
+        assert_eq!(app.mode, Mode::MultiSelect);
+    }
+
+    #[test]
+    fn test_confirm_esc_cancels() {
+        let mut app = app_in_confirm();
+        let action = handle_key(key(KeyCode::Esc), &mut app);
+
+        assert_eq!(action, Action::Continue);
+        assert_eq!(app.mode, Mode::MultiSelect);
+    }
+
+    #[test]
+    fn test_confirm_ignores_other_keys() {
+        let mut app = app_in_confirm();
+        let action = handle_key(key(KeyCode::Char('x')), &mut app);
+
+        assert_eq!(action, Action::Continue);
+        assert_eq!(app.mode, Mode::Confirm);
+    }
+
+    // === MultiSelect to Confirm transition ===
+
+    #[test]
+    fn test_multiselect_enter_with_selections_shows_confirm() {
+        let mut app = app_in_multiselect_with_selections();
+        let action = handle_key(key(KeyCode::Enter), &mut app);
+
+        assert_eq!(action, Action::Continue);
+        assert_eq!(app.mode, Mode::Confirm);
+    }
+
+    #[test]
+    fn test_multiselect_enter_without_selections_stays() {
+        let mut app = App::new(false, SortOrder::Size);
+        app.mode = Mode::MultiSelect;
+        // No selections
+
+        let action = handle_key(key(KeyCode::Enter), &mut app);
+
+        assert_eq!(action, Action::Continue);
+        assert_eq!(app.mode, Mode::MultiSelect);
     }
 }
