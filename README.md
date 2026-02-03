@@ -139,20 +139,7 @@ When you run `cache-sweep` without `--json` flags, you get an interactive termin
 
 ### Main Screen Layout
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  cache-sweep | 3 results | 3.8 GiB potential | 0 B freed | sort:SIZE         │
-└──────────────────────────────────────────────────────────────────────────────┘
-All (3) | target (1) | node_modules (2)                         ← Tab to filter
-┌─ Results - SPACE to delete ──────────────────────────────────────────────────┐
-│  Path                                                      Last_mod     Size │
-│ >/Users/you/projects/webapp/node_modules                        1d  1.2 GiB  │
-│  /Users/you/projects/api/node_modules                           3d  892 MiB  │
-│  /Users/you/code/rust-tool/target                               0d  654 MiB  │
-│                                                                              │
-└──────────────────────────────────────────────────────────────────────────────┘
-Tab/⇧Tab:switch | ↑/↓:nav | /:search | s:sort | v:multi | SPACE:del | q:quit
-```
+![cache-sweep demo](demo.gif)
 
 ### Keyboard Controls
 
