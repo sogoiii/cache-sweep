@@ -1,5 +1,9 @@
 # cache-sweep
 
+<p align="center">
+  <img src="banner.svg" alt="cache-sweep banner" width="800">
+</p>
+
 A fast, interactive terminal tool for finding and deleting dependency and cache folders to reclaim disk space. Think of it as a smarter `rm -rf node_modules` that works across all your projects at once.
 
 ![Rust](https://img.shields.io/badge/rust-stable-orange)
